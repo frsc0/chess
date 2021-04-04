@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { createUseStyles, ThemeProvider } from "react-jss";
 import Board from "./components/board/Board";
 import { numFiles, numRanks, startingPos } from "./config";
@@ -21,12 +21,18 @@ function App(): JSX.Element {
   const [gameData, setGameData] = useState<GameData>(
     initializeGameData(startingPos, numRanks, numFiles)
   );
+  const gameDataRef = useRef(gameData);
   const [droppableSquares, setDroppableSquares] = useState<Position[]>([]);
 
+  const setGameDataAndRef = (newGameData: GameData) => {
+    gameDataRef.current = newGameData;
+    setGameData(newGameData);
+  };
+
   const movePiece = (piece: Piece, newRank: number, newFile: number) => {
-    setGameData(
+    setGameDataAndRef(
       movePieceAndGetGameData(
-        gameData,
+        gameDataRef.current,
         piece,
         newRank,
         newFile,
@@ -46,7 +52,7 @@ function App(): JSX.Element {
         <Board
           numRanks={numRanks}
           numFiles={numFiles}
-          pieceData={gameData.pieceData}
+          pieceData={gameDataRef.current.pieceData}
           droppableSquares={droppableSquares}
           setDroppableSquares={handleSetDroppableSquares}
           movePiece={movePiece}

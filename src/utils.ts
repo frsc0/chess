@@ -1024,10 +1024,69 @@ export const updatePiecePosition = (
   const newPiece = { ...pieces[pieceIndex] };
   if (newPiece.position === null)
     throw Error(`Piece ${movingPiece.id} has been captured and cannot move.`);
-  newPiece.position.rank = newRank;
-  newPiece.position.file = newFile;
+  newPiece.position = {
+    rank: newRank,
+    file: newFile,
+  };
   const newPieces = [...pieces];
   newPieces[pieceIndex] = newPiece;
+  return newPieces;
+};
+
+export const moveEnablesEnPassant = (piece: Piece, newRank: number): boolean =>
+  piece.type === "pawn" &&
+  piece.position !== null &&
+  Math.abs(newRank - piece.position.rank) === 2;
+
+export const getEnPassantTargetForMove = (
+  piece: Piece,
+  newRank: number,
+  newFile: number
+): Position | null => {
+  if (!moveEnablesEnPassant(piece, newRank)) {
+    return null;
+  }
+  switch (piece.colour) {
+    case "white":
+      return {
+        rank: newRank,
+        file: newFile - 1,
+      };
+    case "black":
+      return {
+        rank: newRank,
+        file: newFile + 1,
+      };
+    default:
+      throw Error(`Invalid piece colour: ${piece.colour}.`);
+  }
+};
+
+export const makeCaptures = (
+  newEnemyPosition: Position,
+  friendlyPieces: Piece[]
+): Piece[] => {
+  const capturedPieceIndex = friendlyPieces.findIndex(
+    (p) =>
+      p.position &&
+      isSamePosition(
+        {
+          rank: newEnemyPosition.rank,
+          file: newEnemyPosition.file,
+        },
+        {
+          rank: p.position.rank,
+          file: p.position.file,
+        }
+      )
+  );
+  const newPieces = [...friendlyPieces];
+  if (capturedPieceIndex === -1) {
+    return newPieces;
+  }
+  const newPiece: Piece = { ...friendlyPieces[capturedPieceIndex] };
+  newPiece.position = null;
+  newPieces[capturedPieceIndex] = newPiece;
   return newPieces;
 };
 
@@ -1054,7 +1113,10 @@ export const movePieceAndGetGameData = (
               numRanks,
               numFiles
             )
-          : gameData.pieceData.white,
+          : makeCaptures(
+              { rank: newRank, file: newFile },
+              gameData.pieceData.white
+            ),
       black:
         piece.colour === "black"
           ? updatePiecePosition(
@@ -1065,7 +1127,10 @@ export const movePieceAndGetGameData = (
               numRanks,
               numFiles
             )
-          : gameData.pieceData.black,
+          : makeCaptures(
+              { rank: newRank, file: newFile },
+              gameData.pieceData.black
+            ),
     },
     halfmoveClock: gameData.halfmoveClock + 1,
     fullmoveNumber:

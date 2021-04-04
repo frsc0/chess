@@ -73,13 +73,16 @@ export default function Piece(props: PieceProps): JSX.Element {
   const { piece, setDroppableSquares } = props;
   const classes = useStyles();
 
-  const [{ isDragging }, drag] = useDrag(() => ({
-    type: piece.type,
-    item: piece,
-    collect: (monitor) => ({
-      isDragging: !!monitor.isDragging(),
+  const [{ isDragging }, drag] = useDrag(
+    () => ({
+      type: piece.type,
+      item: piece,
+      collect: (monitor) => ({
+        isDragging: !!monitor.isDragging(),
+      }),
     }),
-  }));
+    [piece]
+  );
 
   const [image, setImage] = useState<string>(
     getImageToUse(piece.type, piece.colour)
