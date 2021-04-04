@@ -1,9 +1,10 @@
+import cloneDeep from "clone-deep";
 import { pieceColourArray } from "./globalConstants";
+import { GameStore } from "./redux/store";
 import {
   CastlingAvailabilities,
   CastlingAvailability,
   CastlingSide,
-  GameData,
   Piece,
   PieceColour,
   PieceCount,
@@ -509,7 +510,7 @@ export const getCastlingSquare = (
 export const generateAttacksForPiece = (
   piece: Piece,
   isPawnAndHasMoved: boolean,
-  castlingAvailabilities: CastlingAvailabilities,
+  castlingAvailability: CastlingAvailability,
   pieceData: PieceData,
   numRanks: number,
   numFiles: number,
@@ -518,8 +519,6 @@ export const generateAttacksForPiece = (
   if (piece.position === null) {
     return [];
   }
-  const castlingAvailability: CastlingAvailability =
-    castlingAvailabilities[piece.colour];
   const movement = getPieceMovementForPiece(
     piece.type,
     isPawnAndHasMoved,
@@ -642,6 +641,32 @@ export const pawnHasMoved = (
   (colour === "white" && position.rank !== 1) ||
   (colour === "black" && position.rank !== numRanks - 2);
 
+export const generateAttacksForPieces = (
+  colour: PieceColour,
+  pieces: Piece[],
+  numRanks: number,
+  numFiles: number,
+  castlingAvailability: CastlingAvailability,
+  pieceData: PieceData,
+  enPassantTarget: Position | null
+): Piece[] =>
+  pieces.map((p) => {
+    const newPiece = { ...p };
+    const isPawnAndHasMoved =
+      newPiece.type === "pawn" &&
+      pawnHasMoved(newPiece.position, newPiece.colour, numRanks);
+    newPiece.attacks = generateAttacksForPiece(
+      newPiece,
+      isPawnAndHasMoved,
+      castlingAvailability,
+      pieceData,
+      numRanks,
+      numFiles,
+      enPassantTarget
+    );
+    return newPiece;
+  });
+
 export const generateAttacksForPieceData = (
   pieceData: PieceData,
   castlingAvailabilities: CastlingAvailabilities,
@@ -652,24 +677,17 @@ export const generateAttacksForPieceData = (
   const newPieceData: PieceData = {
     ...pieceData,
   };
-  Object.entries(pieceData).forEach(([colour, pieces]) => {
-    const newPieces: Piece[] = pieces.map((piece) => {
-      const newPiece = { ...piece };
-      const isPawnAndHasMoved =
-        newPiece.type === "pawn" &&
-        pawnHasMoved(piece.position, piece.colour, numRanks);
-      newPiece.attacks = generateAttacksForPiece(
-        newPiece,
-        isPawnAndHasMoved,
-        castlingAvailabilities,
-        pieceData,
-        numRanks,
-        numFiles,
-        enPassantTarget
-      );
-      return newPiece;
-    });
-    newPieceData[colour as PieceColour] = newPieces;
+  Object.entries(newPieceData).forEach(([colour, pieces]) => {
+    const colourTyped = colour as PieceColour;
+    newPieceData[colour as PieceColour] = generateAttacksForPieces(
+      colourTyped,
+      pieces,
+      numRanks,
+      numFiles,
+      castlingAvailabilities[colourTyped],
+      pieceData,
+      enPassantTarget
+    );
   });
   return newPieceData;
 };
@@ -975,7 +993,7 @@ export const initializeGameData = (
   fenString: string,
   numRanks: number,
   numFiles: number
-): GameData => {
+): GameStore => {
   const sections = fenString.split(" ");
   if (sections.length !== 6) {
     throw Error(`Invalid FEN string: ${fenString}`);
@@ -984,7 +1002,7 @@ export const initializeGameData = (
     white: [],
     black: [],
   };
-  const gameData: GameData = {
+  const gameData: GameStore = {
     pieceData: placeholderPieceData,
     activeColour: initializeActiveColour(sections[1]),
     castlingAvailabilities: initializeCastlingAvailabilities(sections[2]),
@@ -1021,58 +1039,168 @@ export const updatePiecePosition = (
   const pieceIndex = pieces.findIndex((p) => p.id === movingPiece.id);
   if (pieceIndex === -1)
     throw Error(`Piece ${movingPiece.id} was not found in the pieces array.`);
-  const newPiece = { ...pieces[pieceIndex] };
+  const newPieces = [...pieces];
+  const newPiece: Piece = { ...newPieces[pieceIndex] };
   if (newPiece.position === null)
     throw Error(`Piece ${movingPiece.id} has been captured and cannot move.`);
-  newPiece.position.rank = newRank;
-  newPiece.position.file = newFile;
-  const newPieces = [...pieces];
+  newPiece.position = {
+    rank: newRank,
+    file: newFile,
+  };
   newPieces[pieceIndex] = newPiece;
   return newPieces;
 };
 
+export const moveEnablesEnPassant = (piece: Piece, newRank: number): boolean =>
+  piece.type === "pawn" &&
+  piece.position !== null &&
+  Math.abs(newRank - piece.position.rank) === 2;
+
+export const getEnPassantTargetForMove = (
+  piece: Piece,
+  newRank: number,
+  newFile: number
+): Position | null => {
+  if (!moveEnablesEnPassant(piece, newRank)) {
+    return null;
+  }
+  switch (piece.colour) {
+    case "white":
+      return {
+        rank: newRank,
+        file: newFile - 1,
+      };
+    case "black":
+      return {
+        rank: newRank,
+        file: newFile + 1,
+      };
+    default:
+      throw Error(`Invalid piece colour: ${piece.colour}.`);
+  }
+};
+
+export const makeCaptures = (
+  newEnemyPosition: Position,
+  friendlyPieces: Piece[]
+): Piece[] => {
+  const capturedPieceIndex = friendlyPieces.findIndex(
+    (p) =>
+      p.position &&
+      isSamePosition(
+        {
+          rank: newEnemyPosition.rank,
+          file: newEnemyPosition.file,
+        },
+        {
+          rank: p.position.rank,
+          file: p.position.file,
+        }
+      )
+  );
+  const newPieces = [...friendlyPieces];
+  if (capturedPieceIndex === -1) {
+    return newPieces;
+  }
+  // const newPiece: Piece = { ...friendlyPieces[capturedPieceIndex] };
+  // newPiece.position = null;
+  newPieces.splice(capturedPieceIndex, 1);
+  // newPieces[capturedPieceIndex] = newPiece;
+  return newPieces;
+};
+
 export const movePieceAndGetGameData = (
-  gameData: GameData,
+  gameData: GameStore,
   piece: Piece,
   newRank: number,
   newFile: number,
   numRanks: number,
   numFiles: number
-): GameData => {
-  // TODO: Update en passant target and castling availabilities.
-  // TODO: Make sure the move is actually legal.
-  const newGameData: GameData = {
-    ...gameData,
-    pieceData: {
-      white:
-        piece.colour === "white"
-          ? updatePiecePosition(
-              gameData.pieceData.white,
-              piece,
-              newRank,
-              newFile,
-              numRanks,
-              numFiles
-            )
-          : gameData.pieceData.white,
-      black:
-        piece.colour === "black"
-          ? updatePiecePosition(
-              gameData.pieceData.black,
-              piece,
-              newRank,
-              newFile,
-              numRanks,
-              numFiles
-            )
-          : gameData.pieceData.black,
-    },
-    halfmoveClock: gameData.halfmoveClock + 1,
-    fullmoveNumber:
-      piece.colour === pieceColourArray[pieceColourArray.length - 1]
-        ? gameData.fullmoveNumber + 1
-        : gameData.fullmoveNumber,
+): GameStore => {
+  // TODO: Update castling availabilities.
+  const enPassantTarget = getEnPassantTargetForMove(piece, newRank, newFile);
+  const newGameData = cloneDeep(gameData);
+  newGameData.activeColour =
+    newGameData.activeColour === "white" ? "black" : "white";
+  newGameData.pieceData = {
+    white:
+      piece.colour === "white"
+        ? updatePiecePosition(
+            newGameData.pieceData.white,
+            piece,
+            newRank,
+            newFile,
+            numRanks,
+            numFiles
+          )
+        : makeCaptures(
+            { rank: newRank, file: newFile },
+            newGameData.pieceData.white
+          ),
+    black:
+      piece.colour === "black"
+        ? updatePiecePosition(
+            newGameData.pieceData.black,
+            piece,
+            newRank,
+            newFile,
+            numRanks,
+            numFiles
+          )
+        : makeCaptures(
+            { rank: newRank, file: newFile },
+            newGameData.pieceData.black
+          ),
   };
+  newGameData.enPassantTarget = enPassantTarget;
+  newGameData.halfmoveClock += 1;
+  newGameData.fullmoveNumber =
+    piece.colour === pieceColourArray[pieceColourArray.length - 1]
+      ? newGameData.fullmoveNumber + 1
+      : newGameData.fullmoveNumber;
+
+  // const newGameData: GameData = {
+  //   ...gameData,
+  //   activeColour: gameData.activeColour === "white" ? "black" : "white",
+  //   pieceData: {
+  //     ...gameData.pieceData,
+  //     white:
+  //       piece.colour === "white"
+  //         ? updatePiecePosition(
+  //             gameData.pieceData.white,
+  //             piece,
+  //             newRank,
+  //             newFile,
+  //             numRanks,
+  //             numFiles
+  //           )
+  //         : makeCaptures(
+  //             { rank: newRank, file: newFile },
+  //             gameData.pieceData.white
+  //           ),
+  //     black:
+  //       piece.colour === "black"
+  //         ? updatePiecePosition(
+  //             gameData.pieceData.black,
+  //             piece,
+  //             newRank,
+  //             newFile,
+  //             numRanks,
+  //             numFiles
+  //           )
+  //         : makeCaptures(
+  //             { rank: newRank, file: newFile },
+  //             gameData.pieceData.black
+  //           ),
+  //   },
+  //   enPassantTarget,
+  //   halfmoveClock: gameData.halfmoveClock + 1,
+  //   fullmoveNumber:
+  //     piece.colour === pieceColourArray[pieceColourArray.length - 1]
+  //       ? gameData.fullmoveNumber + 1
+  //       : gameData.fullmoveNumber,
+  // };
+
   newGameData.pieceData = generateAttacksForPieceData(
     newGameData.pieceData,
     newGameData.castlingAvailabilities,

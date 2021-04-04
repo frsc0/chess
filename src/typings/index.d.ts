@@ -46,21 +46,6 @@ export interface Position {
   file: number;
 }
 
-export interface GameData {
-  activeColour: PieceColour;
-  castlingAvailabilities: CastlingAvailabilities;
-  enPassantTarget: Position | null;
-  /**
-   * This is the number of halfmoves since the last capture or pawn advance. Used for the fifty-move rule.
-   */
-  halfmoveClock: number;
-  /**
-   * The number of full moves. It starts at 1 and is incremented after Black's move.
-   */
-  fullmoveNumber: number;
-  pieceData: PieceData;
-}
-
 export type PieceMovement = {
   /**
    * The number represents the number of squares the piece is allowed to move in that direction.

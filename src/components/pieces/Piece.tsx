@@ -75,7 +75,7 @@ export default function Piece(props: PieceProps): JSX.Element {
 
   const [{ isDragging }, drag] = useDrag(() => ({
     type: piece.type,
-    item: piece,
+    item: { colour: piece.colour, id: piece.id },
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),

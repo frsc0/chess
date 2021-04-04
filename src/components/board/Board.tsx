@@ -3,7 +3,7 @@ import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { createUseStyles } from "react-jss";
 import { boardSpaceUtilization } from "../../config";
-import { Piece, PieceData, Position } from "../../typings";
+import { PieceColour, PieceData, Position } from "../../typings";
 import { getPieceOnSquare, isSamePosition } from "../../utils";
 import Square from "./Square";
 
@@ -23,7 +23,12 @@ interface BoardProps {
   numFiles: number;
   pieceData: PieceData;
   droppableSquares: Position[];
-  movePiece: (piece: Piece, newRank: number, newFile: number) => void;
+  movePiece: (
+    pieceColour: PieceColour,
+    pieceId: string,
+    newRank: number,
+    newFile: number
+  ) => void;
   setDroppableSquares: (newSquares: Position[]) => void;
 }
 

@@ -3,7 +3,7 @@ import { useDrop } from "react-dnd";
 import { createUseStyles } from "react-jss";
 import pieceTypeArray from "../../globalConstants";
 import theme from "../../theme";
-import { Piece as PieceType, Position } from "../../typings";
+import { Piece as PieceType, PieceColour, Position } from "../../typings";
 import Piece from "../pieces/Piece";
 
 const droppableIconWidth = 0.33;
@@ -32,7 +32,12 @@ interface SquareProps {
   fileIndex: number;
   piece: PieceType | null;
   droppable: boolean;
-  movePiece: (piece: PieceType, newRank: number, newFile: number) => void;
+  movePiece: (
+    pieceColour: PieceColour,
+    pieceId: string,
+    newRank: number,
+    newFile: number
+  ) => void;
   setDroppableSquares: (newSquares: Position[]) => void;
 }
 
@@ -50,7 +55,8 @@ export default function Square(props: SquareProps): JSX.Element {
   const [{ isOver }, drop] = useDrop(
     () => ({
       accept: [...pieceTypeArray],
-      drop: (item: PieceType) => movePiece(item, rankIndex, fileIndex),
+      drop: (item: { colour: PieceColour; id: string }) =>
+        movePiece(item.colour, item.id, rankIndex, fileIndex),
       collect: (monitor) => ({
         isOver: !!monitor.isOver(),
       }),
