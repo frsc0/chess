@@ -1,4 +1,4 @@
-import { pieceColourArray } from "./globalConstants";
+import { pieceColourArray } from "../globalConstants";
 import {
   CastlingAvailabilities,
   CastlingAvailability,
@@ -13,7 +13,7 @@ import {
   PieceMoveType,
   PieceType,
   Position,
-} from "./typings";
+} from "../typings";
 
 const initialPieceCount: PieceCount = {
   pawn: 0,
@@ -506,20 +506,57 @@ export const getCastlingSquare = (
   );
 };
 
+export const isKingInCheck = (
+  colour: PieceColour,
+  pieceData: PieceData
+): boolean => {
+  const friendlyPieces = pieceData[colour];
+  const enemyPieces = pieceData[colour === "white" ? "black" : "white"];
+  const friendlyKing = friendlyPieces.find((p) => p.type === "king");
+  if (friendlyKing === undefined) {
+    throw Error(`Could not find a ${colour} king.`);
+  }
+
+  return enemyPieces.some((piece) =>
+    piece.attacks.some((attack) =>
+      isSamePosition(attack, friendlyKing.position)
+    )
+  );
+};
+
+export const moveAvoidsCheck = (
+  piece: Piece,
+  move: Position,
+  gameData: GameData,
+  numRanks: number,
+  numFiles: number
+): boolean => {
+  // eslint-disable-next-line @typescript-eslint/no-use-before-define
+  const nextGameData = movePieceAndGetGameData(
+    gameData,
+    piece,
+    move.rank,
+    move.file,
+    numRanks,
+    numFiles,
+    false
+  );
+  return !isKingInCheck(piece.colour, nextGameData.pieceData);
+};
+
 export const generateAttacksForPiece = (
   piece: Piece,
-  isPawnAndHasMoved: boolean,
-  castlingAvailabilities: CastlingAvailabilities,
-  pieceData: PieceData,
+  gameData: GameData,
   numRanks: number,
   numFiles: number,
-  enPassantTarget: Position | null
+  isPawnAndHasMoved: boolean,
+  filterChecks: boolean
 ): Position[] => {
   if (piece.position === null) {
     return [];
   }
   const castlingAvailability: CastlingAvailability =
-    castlingAvailabilities[piece.colour];
+    gameData.castlingAvailabilities[piece.colour];
   const movement = getPieceMovementForPiece(
     piece.type,
     isPawnAndHasMoved,
@@ -536,7 +573,7 @@ export const generateAttacksForPiece = (
               piece.colour,
               piece.position as Position,
               range,
-              pieceData,
+              gameData.pieceData,
               numRanks,
               numFiles
             )
@@ -549,8 +586,8 @@ export const generateAttacksForPiece = (
             generatePawnDiagonalAttacks(
               piece.colour,
               piece.position as Position,
-              enPassantTarget,
-              pieceData,
+              gameData.enPassantTarget,
+              gameData.pieceData,
               numRanks,
               numFiles
             )
@@ -564,7 +601,7 @@ export const generateAttacksForPiece = (
               piece.colour,
               piece.position as Position,
               range,
-              pieceData,
+              gameData.pieceData,
               numRanks,
               numFiles
             )
@@ -578,7 +615,7 @@ export const generateAttacksForPiece = (
               piece.colour,
               piece.position as Position,
               range,
-              pieceData,
+              gameData.pieceData,
               numRanks,
               numFiles
             )
@@ -592,7 +629,7 @@ export const generateAttacksForPiece = (
               piece.colour,
               piece.position as Position,
               range,
-              pieceData,
+              gameData.pieceData,
               numRanks,
               numFiles
             )
@@ -605,7 +642,7 @@ export const generateAttacksForPiece = (
             generateLJumpAttacks(
               piece.colour,
               piece.position as Position,
-              pieceData,
+              gameData.pieceData,
               numRanks,
               numFiles
             )
@@ -630,6 +667,12 @@ export const generateAttacksForPiece = (
         throw Error(`Type ${type} is not a valid movement type.`);
     }
   });
+  if (filterChecks === true) {
+    // Whether the King is currently in check, or not, the next move needs to avoid it.
+    attacks = attacks.filter((attack) =>
+      moveAvoidsCheck(piece, attack, gameData, numRanks, numFiles)
+    );
+  }
   return attacks;
 };
 
@@ -642,17 +685,230 @@ export const pawnHasMoved = (
   (colour === "white" && position.rank !== 1) ||
   (colour === "black" && position.rank !== numRanks - 2);
 
-export const generateAttacksForPieceData = (
-  pieceData: PieceData,
-  castlingAvailabilities: CastlingAvailabilities,
+export const getSquaresAlongRankOrFile = (
+  along: keyof Position,
+  alongIndex: number,
   numRanks: number,
   numFiles: number,
-  enPassantTarget: Position | null
+  start?: number,
+  end?: number
+): Position[] => {
+  const maxAlongIndex = (along === "rank" ? numRanks : numFiles) - 1;
+  if (alongIndex < 0 || alongIndex > maxAlongIndex) {
+    throw Error(
+      `alongIndex value of ${alongIndex} is out of bounds (min: 0, max: ${maxAlongIndex}).`
+    );
+  }
+
+  const maxStartOrEnd = (along === "rank" ? numFiles : numRanks) - 1;
+  const startToUse =
+    (start !== undefined && end !== undefined ? Math.min(start, end) : start) ||
+    0;
+  const endToUse =
+    (start !== undefined && end !== undefined ? Math.max(start, end) : end) ||
+    maxStartOrEnd;
+  if (startToUse < 0 || startToUse > maxStartOrEnd) {
+    throw Error(
+      `start value of ${startToUse} is out of bounds (min: 0, max: ${maxStartOrEnd}).`
+    );
+  }
+  if (endToUse < 0 || endToUse > maxStartOrEnd) {
+    throw Error(
+      `end value of ${endToUse} is out of bounds (min: 0, max: ${maxStartOrEnd}).`
+    );
+  }
+  if (startToUse >= endToUse) {
+    throw Error(
+      `start value of ${startToUse} is greater than or equal to the end value of ${endToUse}`
+    );
+  }
+
+  const positions: Position[] = [];
+  for (let i = startToUse; i <= endToUse; i += 1) {
+    positions.push({
+      rank: along === "rank" ? alongIndex : i,
+      file: along === "file" ? alongIndex : i,
+    });
+  }
+  return positions;
+};
+
+export const getEnemyColour = (friendlyColour: PieceColour): PieceColour =>
+  friendlyColour === "white" ? "black" : "white";
+
+export const isLegalCastle = (
+  colour: PieceColour,
+  rookCurrentPosition: Position,
+  kingCurrentPosition: Position,
+  pieceData: PieceData,
+  numRanks: number,
+  numFiles: number
+): boolean => {
+  /**
+   * If the king or rook has moved, this will be filtered out by setting castlingAvailabilities.
+   * So, don't need to worry about that here.
+   */
+  if (kingCurrentPosition.rank !== rookCurrentPosition.rank) {
+    throw Error(
+      `King is on rank ${kingCurrentPosition.rank} and the rook is on rank ${rookCurrentPosition.rank}.`
+    );
+  }
+  const squaresBetween = getSquaresAlongRankOrFile(
+    "rank",
+    rookCurrentPosition.rank,
+    numRanks,
+    numFiles,
+    kingCurrentPosition.file,
+    rookCurrentPosition.file
+  ).filter(
+    (sq) =>
+      !isSamePosition(sq, kingCurrentPosition) &&
+      !isSamePosition(sq, rookCurrentPosition)
+  );
+  return (
+    !pieceData[colour].some((fP) =>
+      squaresBetween.some((sq) => isSamePosition(sq, fP.position))
+    ) &&
+    !pieceData[getEnemyColour(colour)].some((eP) =>
+      eP.attacks.some((a) => squaresBetween.some((sq) => isSamePosition(sq, a)))
+    )
+  );
+};
+
+export const getRookIndexForSide = (
+  side: CastlingSide,
+  rank: number,
+  numFiles: number,
+  pieces: Piece[]
+): number => {
+  const targetFile = side === "queenside" ? 0 : numFiles - 1;
+  const rookPosition: Position = { rank, file: targetFile };
+  const rook = pieces.findIndex((p) =>
+    isSamePosition(p.position, rookPosition)
+  );
+  if (rook === -1) {
+    throw Error(
+      `Expected to find rook in position { rank: ${rookPosition.rank}, file: ${rookPosition.file} } but did not find one.`
+    );
+  }
+  return rook;
+};
+
+export const filterIllegalCastles = (
+  gameData: GameData,
+  pieceData: PieceData,
+  numRanks: number,
+  numFiles: number
 ): PieceData => {
-  const newPieceData: PieceData = {
-    ...pieceData,
-  };
+  const newPieceData = { ...pieceData };
+
   Object.entries(pieceData).forEach(([colour, pieces]) => {
+    const colourTyped = colour as PieceColour;
+    const castlingAvailability = gameData.castlingAvailabilities[colourTyped];
+    if (!castlingAvailability.kingside && !castlingAvailability.queenside) {
+      // Assume generateAttacksForPieceData did not erroneously add castling moves.
+      return;
+    }
+
+    const kingIndex = pieces.findIndex((p) => p.type === "king");
+    if (kingIndex === -1) {
+      throw Error(`Unable to find a ${colourTyped} king.`);
+    }
+    const king = pieces[kingIndex];
+    if (king.position === null) {
+      throw Error("King's position cannot be null");
+    }
+
+    const castlingSquares: Position[] = [
+      castlingAvailability.kingside
+        ? getCastlingSquare(colourTyped, "kingside", numRanks, numFiles)
+        : null,
+      castlingAvailability.queenside
+        ? getCastlingSquare(colourTyped, "queenside", numRanks, numFiles)
+        : null,
+    ].filter((p) => p !== null) as Position[];
+    if (castlingSquares.length === 0) {
+      throw Error(`Found no rooks able to castle for ${colourTyped}.`);
+    }
+    if (
+      !castlingSquares.every((sq) =>
+        king.attacks.some((a) => isSamePosition(a, sq))
+      )
+    ) {
+      throw Error(`${colourTyped} king is missing some castling attacks.`);
+    }
+
+    const rooks: { [side in CastlingSide]: Position | null } = {
+      kingside: castlingAvailability.kingside
+        ? pieces[
+            getRookIndexForSide(
+              "kingside",
+              king.position.rank,
+              numFiles,
+              pieces
+            )
+          ].position
+        : null,
+      queenside: castlingAvailability.queenside
+        ? pieces[
+            getRookIndexForSide(
+              "queenside",
+              king.position.rank,
+              numFiles,
+              pieces
+            )
+          ].position
+        : null,
+    };
+
+    const newKingAttacks = king.attacks.filter((a) => {
+      if (!castlingSquares.some((sq) => isSamePosition(sq, a))) {
+        // Not a castling move, keep.
+        return true;
+      }
+
+      if (king.position === null) {
+        throw Error("Cannot castle a captured king.");
+      }
+      const castlingSide: CastlingSide =
+        a.file > king.position.file ? "kingside" : "queenside";
+
+      const rookPosition = rooks[castlingSide];
+      if (rookPosition === null) {
+        throw Error(`Missing rook on ${castlingSide} for castling.`);
+      }
+
+      return isLegalCastle(
+        colourTyped,
+        rookPosition,
+        king.position,
+        pieceData,
+        numRanks,
+        numFiles
+      );
+    });
+
+    const newPieces = [...pieces];
+    newPieces[kingIndex] = {
+      ...newPieces[kingIndex],
+      attacks: newKingAttacks,
+    };
+    newPieceData[colourTyped] = newPieces;
+  });
+  return newPieceData;
+};
+
+export const generateAttacksForPieceData = (
+  gameData: GameData,
+  numRanks: number,
+  numFiles: number,
+  filterChecks: boolean
+): PieceData => {
+  let newPieceData: PieceData = {
+    ...gameData.pieceData,
+  };
+  Object.entries(gameData.pieceData).forEach(([colour, pieces]) => {
+    const colourTyped = colour as PieceColour;
     const newPieces: Piece[] = pieces.map((piece) => {
       const newPiece = { ...piece };
       const isPawnAndHasMoved =
@@ -660,26 +916,33 @@ export const generateAttacksForPieceData = (
         pawnHasMoved(piece.position, piece.colour, numRanks);
       newPiece.attacks = generateAttacksForPiece(
         newPiece,
-        isPawnAndHasMoved,
-        castlingAvailabilities,
-        pieceData,
+        gameData,
         numRanks,
         numFiles,
-        enPassantTarget
+        isPawnAndHasMoved,
+        filterChecks
       );
       return newPiece;
     });
-    newPieceData[colour as PieceColour] = newPieces;
+    newPieceData[colourTyped] = newPieces;
   });
+  if (filterChecks === true) {
+    newPieceData = filterIllegalCastles(
+      gameData,
+      newPieceData,
+      numRanks,
+      numFiles
+    );
+  }
+
   return newPieceData;
 };
 
 export const initializePieceData = (
+  gameData: GameData,
   fenPiecePositions: string,
   numRanks: number,
-  numFiles: number,
-  castlingAvailabilities: CastlingAvailabilities,
-  enPassantTarget: Position | null
+  numFiles: number
 ): PieceData => {
   const ranks = fenPiecePositions.split("/");
   if (ranks.length !== numRanks) {
@@ -846,12 +1109,15 @@ export const initializePieceData = (
       }
     });
   });
-  const pieceDataWithAttackingSquares = generateAttacksForPieceData(
+  const newGameData = {
+    ...gameData,
     pieceData,
-    castlingAvailabilities,
+  };
+  const pieceDataWithAttackingSquares = generateAttacksForPieceData(
+    newGameData,
     numRanks,
     numFiles,
-    enPassantTarget
+    true
   );
   return pieceDataWithAttackingSquares;
 };
@@ -993,13 +1259,41 @@ export const initializeGameData = (
     fullmoveNumber: initializeFullmoveNumber(sections[5]),
   };
   gameData.pieceData = initializePieceData(
+    gameData,
     sections[0],
     numRanks,
-    numFiles,
-    gameData.castlingAvailabilities,
-    gameData.enPassantTarget
+    numFiles
   );
   return gameData;
+};
+
+/**
+ * @returns If the move is a castling move, returns the side. Otherwise, returns null.
+ */
+export const isCastlingMove = (
+  king: Piece,
+  castlingAvailability: CastlingAvailability,
+  kingNewPosition: Position,
+  numRanks: number,
+  numFiles: number
+): CastlingSide | null => {
+  if (king.type !== "king") {
+    throw Error("Must pass a king to isCastlingMove.");
+  }
+  if (!castlingAvailability.kingside && !castlingAvailability.queenside) {
+    return null;
+  }
+  const castlingSquares: { [side in CastlingSide]: Position } = {
+    kingside: getCastlingSquare(king.colour, "kingside", numRanks, numFiles),
+    queenside: getCastlingSquare(king.colour, "queenside", numRanks, numFiles),
+  };
+  if (isSamePosition(castlingSquares.kingside, kingNewPosition)) {
+    return "kingside";
+  }
+  if (isSamePosition(castlingSquares.queenside, kingNewPosition)) {
+    return "queenside";
+  }
+  return null;
 };
 
 export const updatePiecePosition = (
@@ -1008,7 +1302,8 @@ export const updatePiecePosition = (
   newRank: number,
   newFile: number,
   numRanks: number,
-  numFiles: number
+  numFiles: number,
+  castlingAvailability: CastlingAvailability
 ): Piece[] => {
   if (newRank < 0 || newRank > numRanks - 1)
     throw Error(
@@ -1030,6 +1325,40 @@ export const updatePiecePosition = (
   };
   const newPieces = [...pieces];
   newPieces[pieceIndex] = newPiece;
+
+  if (newPiece.type === "king") {
+    /**
+     * Check if this is a castling move.
+     * If yes, move rook.
+     */
+    const castlingSide = isCastlingMove(
+      newPiece,
+      castlingAvailability,
+      newPiece.position,
+      numRanks,
+      numFiles
+    );
+    if (castlingSide !== null) {
+      const rookIndex = getRookIndexForSide(
+        castlingSide,
+        newPiece.position.rank,
+        numFiles,
+        pieces
+      );
+      const rookNewFile =
+        newPiece.position.file + (castlingSide === "queenside" ? 1 : -1);
+      const newRook = { ...pieces[rookIndex] };
+      if (newRook.position === null) {
+        throw Error(`Rook ${newRook.id} has been captured and cannot castle.`);
+      }
+      newRook.position = {
+        ...newRook.position,
+        file: rookNewFile,
+      };
+      newPieces[rookIndex] = newRook;
+    }
+  }
+
   return newPieces;
 };
 
@@ -1090,18 +1419,112 @@ export const makeCaptures = (
   return newPieces;
 };
 
+export const getNewCastlingAvailabilitiesForMove = (
+  piece: Piece,
+  newPosition: Position,
+  pieceData: PieceData,
+  currentCastlingAvailabilities: CastlingAvailabilities,
+  numFiles: number
+): CastlingAvailabilities => {
+  const newCastlingAvailabilites = { ...currentCastlingAvailabilities };
+  const pieceCaptured = getPieceOnSquare(
+    newPosition.rank,
+    newPosition.file,
+    pieceData
+  );
+  const enemyColour = getEnemyColour(piece.colour);
+  if (
+    pieceCaptured !== null &&
+    pieceCaptured.colour === enemyColour &&
+    (pieceCaptured.type === "king" || pieceCaptured.type === "rook")
+  ) {
+    if (pieceCaptured.type === "king") {
+      // This should never be reached but we'll set just in case.
+      newCastlingAvailabilites[enemyColour] = {
+        kingside: false,
+        queenside: false,
+      };
+    } else if (pieceCaptured.type === "rook") {
+      /**
+       * If the rook has moved off its originating file the castling availability should be set to false.
+       * So we just need to worry about when the rook is captured on its home square.
+       */
+      if (pieceCaptured.position === null) {
+        throw Error(
+          `The rook ${pieceCaptured.id} has been prematurely captured.`
+        );
+      }
+      if (pieceCaptured.position.file === 0) {
+        // Queenside rook captured.
+        newCastlingAvailabilites[enemyColour] = {
+          ...newCastlingAvailabilites[enemyColour],
+          queenside: false,
+        };
+      } else if (pieceCaptured.position.file === numFiles) {
+        // Kingside rook captured.
+        newCastlingAvailabilites[enemyColour] = {
+          ...newCastlingAvailabilites[enemyColour],
+          kingside: false,
+        };
+      }
+    }
+  }
+  if (piece.type === "king") {
+    return {
+      ...newCastlingAvailabilites,
+      [piece.colour]: {
+        kingside: false,
+        queenside: false,
+      },
+    };
+  }
+  if (piece.type === "rook") {
+    if (piece.position === null) {
+      return newCastlingAvailabilites;
+    }
+    if (piece.position.file === 0) {
+      // Queenside
+      return {
+        ...newCastlingAvailabilites,
+        [piece.colour]: {
+          ...newCastlingAvailabilites[piece.colour],
+          queenside: false,
+        },
+      };
+    }
+    if (piece.position.file === numFiles - 1) {
+      // Kingside
+      return {
+        ...newCastlingAvailabilites,
+        [piece.colour]: {
+          ...newCastlingAvailabilites[piece.colour],
+          kingside: false,
+        },
+      };
+    }
+  }
+  return currentCastlingAvailabilities;
+};
+
 export const movePieceAndGetGameData = (
   gameData: GameData,
   piece: Piece,
   newRank: number,
   newFile: number,
   numRanks: number,
-  numFiles: number
+  numFiles: number,
+  /**
+   * This variable prevents infinite looping.
+   * It should be set to "true" on all top-level calls...
+   * and "false" on any recursive calls.
+   */
+  filterChecks: boolean
 ): GameData => {
-  // TODO: Update en passant target and castling availabilities.
-  // TODO: Make sure the move is actually legal.
+  // TODO: If move is a castle, move rook as well.
   const newGameData: GameData = {
     ...gameData,
+    activeColour: gameData.activeColour === "white" ? "black" : "white",
+    enPassantTarget: getEnPassantTargetForMove(piece, newRank, newFile),
     pieceData: {
       white:
         piece.colour === "white"
@@ -1111,7 +1534,8 @@ export const movePieceAndGetGameData = (
               newRank,
               newFile,
               numRanks,
-              numFiles
+              numFiles,
+              gameData.castlingAvailabilities[piece.colour]
             )
           : makeCaptures(
               { rank: newRank, file: newFile },
@@ -1125,7 +1549,8 @@ export const movePieceAndGetGameData = (
               newRank,
               newFile,
               numRanks,
-              numFiles
+              numFiles,
+              gameData.castlingAvailabilities[piece.colour]
             )
           : makeCaptures(
               { rank: newRank, file: newFile },
@@ -1137,13 +1562,33 @@ export const movePieceAndGetGameData = (
       piece.colour === pieceColourArray[pieceColourArray.length - 1]
         ? gameData.fullmoveNumber + 1
         : gameData.fullmoveNumber,
+    castlingAvailabilities: getNewCastlingAvailabilitiesForMove(
+      piece,
+      { rank: newRank, file: newFile },
+      gameData.pieceData,
+      gameData.castlingAvailabilities,
+      numFiles
+    ),
   };
   newGameData.pieceData = generateAttacksForPieceData(
-    newGameData.pieceData,
-    newGameData.castlingAvailabilities,
+    newGameData,
     numRanks,
     numFiles,
-    newGameData.enPassantTarget
+    filterChecks
   );
   return newGameData;
+};
+
+export const getSquareInCheck = (pieceData: PieceData): Position | null => {
+  for (let i = 0; i <= pieceColourArray.length - 1; i += 1) {
+    const colour = pieceColourArray[i] as PieceColour;
+    const king = pieceData[colour].find((p) => p.type === "king");
+    if (king === undefined) {
+      throw Error(`Could not find a ${colour} king.`);
+    }
+    if (isKingInCheck(colour, pieceData)) {
+      return king.position;
+    }
+  }
+  return null;
 };

@@ -1,10 +1,22 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createUseStyles, ThemeProvider } from "react-jss";
 import Board from "./components/board/Board";
-import { numFiles, numRanks, startingPos } from "./config";
+import {
+  botEngine,
+  botMoveDelay,
+  bots,
+  numFiles,
+  numRanks,
+  startingFEN,
+} from "./config";
 import theme from "./theme";
 import { GameData, Piece, Position } from "./typings";
-import { initializeGameData, movePieceAndGetGameData } from "./utils";
+import botSelectMove from "./utils/bot.utils";
+import {
+  getSquareInCheck,
+  initializeGameData,
+  movePieceAndGetGameData,
+} from "./utils/game.utils";
 
 const useStyles = createUseStyles(() => ({
   root: {
@@ -18,9 +30,10 @@ const useStyles = createUseStyles(() => ({
 
 function App(): JSX.Element {
   const classes = useStyles();
-  const [gameData, setGameData] = useState<GameData>(
-    initializeGameData(startingPos, numRanks, numFiles)
+  const [gameData, setGameData] = useState<GameData>(() =>
+    initializeGameData(startingFEN, numRanks, numFiles)
   );
+  const [gameOver, setGameOver] = useState<boolean>(false);
   const gameDataRef = useRef(gameData);
   const [droppableSquares, setDroppableSquares] = useState<Position[]>([]);
 
@@ -37,10 +50,36 @@ function App(): JSX.Element {
         newRank,
         newFile,
         numRanks,
-        numFiles
+        numFiles,
+        true
       )
     );
   };
+
+  useEffect(() => {
+    if (gameOver) {
+      return;
+    }
+    const { activeColour } = gameData;
+    if (bots[activeColour]) {
+      const botMove = botSelectMove(
+        botEngine[activeColour],
+        activeColour,
+        gameData
+      );
+      if (botMove === null) {
+        setGameOver(true);
+        return;
+      }
+      setTimeout(() => {
+        movePiece(
+          botMove.piece,
+          botMove.newPosition.rank,
+          botMove.newPosition.file
+        );
+      }, botMoveDelay);
+    }
+  }, [gameData]);
 
   const handleSetDroppableSquares = (newSquares: Position[]): void => {
     setDroppableSquares(newSquares);
@@ -52,8 +91,10 @@ function App(): JSX.Element {
         <Board
           numRanks={numRanks}
           numFiles={numFiles}
-          pieceData={gameDataRef.current.pieceData}
+          pieceData={gameData.pieceData}
+          activeColour={gameData.activeColour}
           droppableSquares={droppableSquares}
+          squareInCheck={getSquareInCheck(gameData.pieceData)}
           setDroppableSquares={handleSetDroppableSquares}
           movePiece={movePiece}
         />

@@ -23,6 +23,7 @@ import {
 const useStyles = createUseStyles(() => ({
   image: {
     height: "67%",
+    zIndex: 1,
   },
 }));
 
@@ -66,22 +67,24 @@ const getImageToUse = (type: PieceType, colour: PieceColour): string => {
 
 interface PieceProps {
   piece: PieceData;
+  activeColour: PieceColour;
   setDroppableSquares: (newSquares: Position[]) => void;
 }
 
 export default function Piece(props: PieceProps): JSX.Element {
-  const { piece, setDroppableSquares } = props;
+  const { piece, activeColour, setDroppableSquares } = props;
   const classes = useStyles();
 
   const [{ isDragging }, drag] = useDrag(
     () => ({
       type: piece.type,
       item: piece,
+      canDrag: piece.colour === activeColour,
       collect: (monitor) => ({
         isDragging: !!monitor.isDragging(),
       }),
     }),
-    [piece]
+    [piece, activeColour]
   );
 
   const [image, setImage] = useState<string>(

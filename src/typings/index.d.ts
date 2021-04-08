@@ -69,3 +69,10 @@ export type PieceMovement = {
    */
   [moveType in PieceMoveType]: number | null;
 };
+
+export interface Move {
+  piece: Piece;
+  newPosition: Position;
+}
+
+export type BotEngine = "random";

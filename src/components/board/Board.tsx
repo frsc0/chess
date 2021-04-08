@@ -3,8 +3,8 @@ import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { createUseStyles } from "react-jss";
 import { boardSpaceUtilization } from "../../config";
-import { Piece, PieceData, Position } from "../../typings";
-import { getPieceOnSquare, isSamePosition } from "../../utils";
+import { Piece, PieceColour, PieceData, Position } from "../../typings";
+import { getPieceOnSquare, isSamePosition } from "../../utils/game.utils";
 import Square from "./Square";
 
 const useStyles = createUseStyles(() => ({
@@ -22,7 +22,9 @@ interface BoardProps {
   numRanks: number;
   numFiles: number;
   pieceData: PieceData;
+  activeColour: PieceColour;
   droppableSquares: Position[];
+  squareInCheck: Position | null;
   movePiece: (piece: Piece, newRank: number, newFile: number) => void;
   setDroppableSquares: (newSquares: Position[]) => void;
 }
@@ -52,7 +54,9 @@ export default function Board(props: BoardProps): JSX.Element {
     numRanks,
     numFiles,
     pieceData,
+    activeColour,
     droppableSquares,
+    squareInCheck,
     movePiece,
     setDroppableSquares,
   } = props;
@@ -87,15 +91,25 @@ export default function Board(props: BoardProps): JSX.Element {
           >
             {rank.map((square, j) => {
               const rankIndex = numRanks - 1 - i;
-              const pieceOnSquare = getPieceOnSquare(rankIndex, j, pieceData);
+              const position = {
+                rank: rankIndex,
+                file: j,
+              };
+              const pieceOnSquare = getPieceOnSquare(
+                position.rank,
+                position.file,
+                pieceData
+              );
               return (
                 <Square
                   rankIndex={rankIndex}
                   fileIndex={j}
                   piece={pieceOnSquare}
+                  activeColour={activeColour}
                   droppable={droppableSquares.some((sq) =>
-                    isSamePosition(sq, { rank: rankIndex, file: j })
+                    isSamePosition(sq, position)
                   )}
+                  checkingSquare={isSamePosition(squareInCheck, position)}
                   movePiece={movePiece}
                   setDroppableSquares={setDroppableSquares}
                 />

@@ -3,7 +3,8 @@ import { useDrop } from "react-dnd";
 import { createUseStyles } from "react-jss";
 import pieceTypeArray from "../../globalConstants";
 import theme from "../../theme";
-import { Piece as PieceType, Position } from "../../typings";
+import { Piece as PieceType, PieceColour, Position } from "../../typings";
+import { isSamePosition } from "../../utils/game.utils";
 import Piece from "../pieces/Piece";
 
 const droppableIconWidth = 0.33;
@@ -16,6 +17,12 @@ const useStyles = createUseStyles(() => ({
     alignItems: "center",
     position: "relative",
   },
+  checkIndicator: {
+    position: "absolute",
+    height: "100%",
+    width: "100%",
+    backgroundColor: "rgba(219, 68, 55, 0.5)",
+  },
   droppableIcon: {
     position: "absolute",
     left: `${(0.5 - droppableIconWidth / 2) * 100}%`,
@@ -24,6 +31,7 @@ const useStyles = createUseStyles(() => ({
     width: `${droppableIconWidth * 100}%`,
     backgroundColor: "rgba(15, 159, 89, 0.5)",
     borderRadius: "50%",
+    zIndex: 2,
   },
 }));
 
@@ -31,7 +39,9 @@ interface SquareProps {
   rankIndex: number;
   fileIndex: number;
   piece: PieceType | null;
+  activeColour: PieceColour;
   droppable: boolean;
+  checkingSquare: boolean;
   movePiece: (piece: PieceType, newRank: number, newFile: number) => void;
   setDroppableSquares: (newSquares: Position[]) => void;
 }
@@ -41,7 +51,9 @@ export default function Square(props: SquareProps): JSX.Element {
     rankIndex,
     fileIndex,
     piece,
+    activeColour,
     droppable,
+    checkingSquare,
     movePiece,
     setDroppableSquares,
   } = props;
@@ -51,6 +63,10 @@ export default function Square(props: SquareProps): JSX.Element {
     () => ({
       accept: [...pieceTypeArray],
       drop: (item: PieceType) => movePiece(item, rankIndex, fileIndex),
+      canDrop: (item: PieceType) =>
+        item.attacks.some((p) =>
+          isSamePosition(p, { rank: rankIndex, file: fileIndex })
+        ),
       collect: (monitor) => ({
         isOver: !!monitor.isOver(),
       }),
@@ -65,10 +81,15 @@ export default function Square(props: SquareProps): JSX.Element {
 
   return (
     <div className={classes.root} style={{ backgroundColor: color }} ref={drop}>
-      {piece && (
-        <Piece piece={piece} setDroppableSquares={setDroppableSquares} />
-      )}
       {droppable && <div className={classes.droppableIcon} />}
+      {checkingSquare && <div className={classes.checkIndicator} />}
+      {piece && (
+        <Piece
+          piece={piece}
+          activeColour={activeColour}
+          setDroppableSquares={setDroppableSquares}
+        />
+      )}
     </div>
   );
 }
