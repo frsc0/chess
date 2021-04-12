@@ -1,9 +1,21 @@
-import { pieceColourArray } from "../globalConstants";
+import { format } from "date-fns";
+import { pieceValues } from "../config";
 import {
+  blankCastlingAvailability,
+  botPGNName,
+  humanPGNName,
+  pgnDateFormat,
+  pieceColourArray,
+  pieceFENMapping,
+} from "../globalConstants";
+import {
+  BotPlayers,
   CastlingAvailabilities,
   CastlingAvailability,
   CastlingSide,
   GameData,
+  GameResult,
+  Move,
   Piece,
   PieceColour,
   PieceCount,
@@ -14,8 +26,9 @@ import {
   PieceType,
   Position,
 } from "../typings";
+import { hasNoLegalMoves } from "./bot.utils";
 
-const initialPieceCount: PieceCount = {
+export const initialPieceCount: PieceCount = {
   pawn: 0,
   knight: 0,
   bishop: 0,
@@ -23,6 +36,22 @@ const initialPieceCount: PieceCount = {
   queen: 0,
   king: 0,
 };
+
+export const generateBlankGameData = (): GameData => ({
+  activeColour: "white",
+  castlingAvailabilities: {
+    white: { ...blankCastlingAvailability },
+    black: { ...blankCastlingAvailability },
+  },
+  enPassantTarget: null,
+  halfmoveClock: 0,
+  fullmoveNumber: 1,
+  pieceData: {
+    white: [],
+    black: [],
+  },
+  FEN: "",
+});
 
 export const generatePieceId = (
   colour: PieceColour,
@@ -39,13 +68,19 @@ export const pieceIsOnSquare = (
   piece.position.rank === rank &&
   piece.position.file === file;
 
+export const getPieceOnSquareOfColour = (
+  position: Position,
+  pieces: Piece[]
+): Piece | null =>
+  pieces.find((p) => pieceIsOnSquare(position.rank, position.file, p)) || null;
+
 export const getPieceOnSquare = (
   rank: number,
   file: number,
   pieceData: PieceData
 ): Piece | null =>
-  pieceData.black.find((piece) => pieceIsOnSquare(rank, file, piece)) ||
-  pieceData.white.find((piece) => pieceIsOnSquare(rank, file, piece)) ||
+  getPieceOnSquareOfColour({ rank, file }, pieceData.white) ||
+  getPieceOnSquareOfColour({ rank, file }, pieceData.black) ||
   null;
 
 export const getPieceMovementForPiece = (
@@ -828,14 +863,7 @@ export const filterIllegalCastles = (
         : null,
     ].filter((p) => p !== null) as Position[];
     if (castlingSquares.length === 0) {
-      throw Error(`Found no rooks able to castle for ${colourTyped}.`);
-    }
-    if (
-      !castlingSquares.every((sq) =>
-        king.attacks.some((a) => isSamePosition(a, sq))
-      )
-    ) {
-      throw Error(`${colourTyped} king is missing some castling attacks.`);
+      throw Error(`Found no legal castling squares for ${colourTyped}.`);
     }
 
     const rooks: { [side in CastlingSide]: Position | null } = {
@@ -926,14 +954,12 @@ export const generateAttacksForPieceData = (
     });
     newPieceData[colourTyped] = newPieces;
   });
-  if (filterChecks === true) {
-    newPieceData = filterIllegalCastles(
-      gameData,
-      newPieceData,
-      numRanks,
-      numFiles
-    );
-  }
+  newPieceData = filterIllegalCastles(
+    gameData,
+    newPieceData,
+    numRanks,
+    numFiles
+  );
 
   return newPieceData;
 };
@@ -1190,8 +1216,8 @@ export const getFileNumberFromLetter = (
   return fileNum;
 };
 
-export const getFileLetterFromNumber = (fileNumber: number): string =>
-  String.fromCharCode(charCodeOffset + fileNumber);
+export const getFileLetterFromNumber = (fileNum: number): string =>
+  String.fromCharCode(fileNum + "a".charCodeAt(0));
 
 export const initializeEnPassantTarget = (
   fenEnPassantTarget: string,
@@ -1257,6 +1283,7 @@ export const initializeGameData = (
     enPassantTarget: initializeEnPassantTarget(sections[3], numRanks, numFiles),
     halfmoveClock: initializeHalfmoveClock(sections[4]),
     fullmoveNumber: initializeFullmoveNumber(sections[5]),
+    FEN: fenString,
   };
   gameData.pieceData = initializePieceData(
     gameData,
@@ -1296,6 +1323,18 @@ export const isCastlingMove = (
   return null;
 };
 
+export const pawnShouldPromote = (
+  pawn: Piece,
+  newPosition: Position,
+  numRanks: number
+): boolean => {
+  if (pawn.type !== "pawn") {
+    throw Error(`Piece ${pawn.id} is not a pawn.`);
+  }
+  const promotionRank = pawn.colour === "white" ? numRanks - 1 : 0;
+  return newPosition.rank === promotionRank;
+};
+
 export const updatePiecePosition = (
   pieces: Piece[],
   movingPiece: Piece,
@@ -1324,7 +1363,6 @@ export const updatePiecePosition = (
     file: newFile,
   };
   const newPieces = [...pieces];
-  newPieces[pieceIndex] = newPiece;
 
   if (newPiece.type === "king") {
     /**
@@ -1357,8 +1395,15 @@ export const updatePiecePosition = (
       };
       newPieces[rookIndex] = newRook;
     }
+  } else if (newPiece.type === "pawn") {
+    // Check if pawn promoted.
+    // TODO: Support under-promoting.
+    if (pawnShouldPromote(newPiece, newPiece.position, numRanks)) {
+      newPiece.type = "queen";
+    }
   }
 
+  newPieces[pieceIndex] = newPiece;
   return newPieces;
 };
 
@@ -1378,13 +1423,13 @@ export const getEnPassantTargetForMove = (
   switch (piece.colour) {
     case "white":
       return {
-        rank: newRank,
-        file: newFile - 1,
+        rank: newRank - 1,
+        file: newFile,
       };
     case "black":
       return {
-        rank: newRank,
-        file: newFile + 1,
+        rank: newRank + 1,
+        file: newFile,
       };
     default:
       throw Error(`Invalid piece colour: ${piece.colour}.`);
@@ -1460,7 +1505,7 @@ export const getNewCastlingAvailabilitiesForMove = (
           ...newCastlingAvailabilites[enemyColour],
           queenside: false,
         };
-      } else if (pieceCaptured.position.file === numFiles) {
+      } else if (pieceCaptured.position.file === numFiles - 1) {
         // Kingside rook captured.
         newCastlingAvailabilites[enemyColour] = {
           ...newCastlingAvailabilites[enemyColour],
@@ -1503,8 +1548,100 @@ export const getNewCastlingAvailabilitiesForMove = (
       };
     }
   }
-  return currentCastlingAvailabilities;
+  return newCastlingAvailabilites;
 };
+
+export const generateFENEnPassantTarget = (
+  enPassantTarget: Position | null
+): string => {
+  if (enPassantTarget === null) {
+    return "-";
+  }
+  const rank = enPassantTarget.rank + 1;
+  const file = getFileLetterFromNumber(enPassantTarget.file);
+  return file + rank;
+};
+
+export const generateFENCastlingAvailabilities = (
+  castlingAvailabilities: CastlingAvailabilities
+): string => {
+  let string = "";
+
+  if (castlingAvailabilities.white.kingside === true) {
+    string += "K";
+  }
+  if (castlingAvailabilities.white.queenside === true) {
+    string += "Q";
+  }
+
+  if (castlingAvailabilities.black.kingside === true) {
+    string += "k";
+  }
+  if (castlingAvailabilities.black.queenside === true) {
+    string += "q";
+  }
+
+  if (string.length === 0) {
+    string = "-";
+  }
+
+  return string;
+};
+
+export const generateFENActiveColour = (activeColour: PieceColour): string =>
+  activeColour === "white" ? "w" : "b";
+
+export const generateFENPiecePlacement = (
+  pieceData: PieceData,
+  numRanks: number,
+  numFiles: number
+): string => {
+  let string = "";
+  for (let i = 0; i <= numRanks - 1; i += 1) {
+    let numEmptySquares = 0;
+
+    for (let j = 0; j <= numFiles - 1; j += 1) {
+      const pieceOnSquare = getPieceOnSquare(i, j, pieceData);
+
+      if (pieceOnSquare !== null) {
+        if (numEmptySquares > 0) {
+          string += numEmptySquares;
+        }
+        string += pieceFENMapping[pieceOnSquare.colour][pieceOnSquare.type];
+        numEmptySquares = 0;
+      } else {
+        numEmptySquares += 1;
+      }
+
+      if (j === numFiles - 1 && numEmptySquares > 0) {
+        string += numEmptySquares;
+      }
+    }
+
+    if (i < numRanks - 1) {
+      string += "/";
+    }
+  }
+
+  return string;
+};
+
+export const generateFENForPosition = (
+  gameData: GameData,
+  numRanks: number,
+  numFiles: number
+): string =>
+  `${generateFENPiecePlacement(
+    gameData.pieceData,
+    numRanks,
+    numFiles
+  )} ${generateFENActiveColour(
+    gameData.activeColour
+  )} ${generateFENCastlingAvailabilities(
+    gameData.castlingAvailabilities
+  )} ${generateFENEnPassantTarget(gameData.enPassantTarget)} ${
+    gameData.halfmoveClock
+  } ${gameData.fullmoveNumber}`;
 
 export const movePieceAndGetGameData = (
   gameData: GameData,
@@ -1520,7 +1657,6 @@ export const movePieceAndGetGameData = (
    */
   filterChecks: boolean
 ): GameData => {
-  // TODO: If move is a castle, move rook as well.
   const newGameData: GameData = {
     ...gameData,
     activeColour: gameData.activeColour === "white" ? "black" : "white",
@@ -1570,6 +1706,7 @@ export const movePieceAndGetGameData = (
       numFiles
     ),
   };
+  newGameData.FEN = generateFENForPosition(newGameData, numRanks, numFiles);
   newGameData.pieceData = generateAttacksForPieceData(
     newGameData,
     numRanks,
@@ -1591,4 +1728,244 @@ export const getSquareInCheck = (pieceData: PieceData): Position | null => {
     }
   }
   return null;
+};
+
+export const getAllAvailableMoves = (pieces: Piece[]): Move[] =>
+  pieces.reduce<Move[]>((prev, cur) => {
+    const pieceMoves: Move[] = cur.attacks.map((a) => ({
+      piece: cur,
+      newPosition: a,
+    }));
+    return prev.concat(pieceMoves);
+  }, []);
+
+export const getGameResult = (gameData: GameData): GameResult | null => {
+  // TODO: Other game over conditions.
+  const activePieces = gameData.pieceData[gameData.activeColour];
+  const enemyColour = getEnemyColour(gameData.activeColour);
+  if (getAllAvailableMoves(activePieces).length === 0) {
+    if (isKingInCheck(gameData.activeColour, gameData.pieceData)) {
+      // Checkmate
+      return {
+        [enemyColour]: 1,
+        [gameData.activeColour]: 0,
+      } as GameResult;
+    }
+    // Stalemate
+    return {
+      white: 0.5,
+      black: 0.5,
+    };
+  }
+  return null;
+};
+
+export const getPGNResult = (result: GameResult | null): string => {
+  if (result === null) {
+    return "*";
+  }
+  if (result.white === 1) {
+    return "1-0";
+  }
+  if (result.black === 1) {
+    return "0-1";
+  }
+  return "1/2-1/2";
+};
+
+export const initializePGN = (
+  round: number,
+  botPlayers: BotPlayers,
+  result: GameResult | null
+): string =>
+  `[Event "Cherry Chess Exhibition"]\n[Site "Cherry Chess"]\n[Date "${format(
+    new Date(),
+    pgnDateFormat
+  )}"]\n[Round "${round}"]\n[White "${
+    botPlayers.white === true ? botPGNName : humanPGNName
+  }"]\n[Black "${
+    botPlayers.black === true ? botPGNName : humanPGNName
+  }"]\n[Result "${getPGNResult(result)}"]\n\n`;
+
+export const moveIsCapture = (move: Move, enemyPieces: Piece[]): boolean =>
+  enemyPieces.some((p) => isSamePosition(p.position, move.newPosition));
+
+export const getPGNForMove = (
+  fullMoveNumber: number,
+  move: Move,
+  castlingAvailabilities: CastlingAvailabilities,
+  oldEnemyPieces: Piece[],
+  newPieceData: PieceData,
+  numRanks: number,
+  numFiles: number
+): string => {
+  // TODO: Ambiguous moves
+  // TODO: Promotions
+
+  let string = "";
+  const isWhite = move.piece.colour === "white";
+  if (isWhite) {
+    // New fullmove. Add fullmove number.
+    string += `${fullMoveNumber > 1 ? " " : ""}${fullMoveNumber}. `;
+  } else {
+    string += " ";
+  }
+
+  let isCastle = false;
+  if (move.piece.type === "king") {
+    const castlingMove = isCastlingMove(
+      move.piece,
+      castlingAvailabilities[move.piece.colour],
+      move.newPosition,
+      numRanks,
+      numFiles
+    );
+    if (castlingMove !== null) {
+      isCastle = true;
+      switch (castlingMove) {
+        case "kingside":
+          string += "O-O";
+          break;
+        case "queenside":
+          string += "O-O-O";
+          break;
+        default:
+          throw Error(`Invalid castling side: ${castlingMove}.`);
+      }
+    }
+  }
+  if (!isCastle) {
+    let pieceAbbreviation = "";
+    const isCapture = moveIsCapture(move, oldEnemyPieces);
+
+    if (move.piece.type === "pawn") {
+      if (isCapture) {
+        if (move.piece.position === null) {
+          throw Error(`Captured piece ${move.piece.id} was moved.`);
+        }
+        pieceAbbreviation = getFileLetterFromNumber(move.piece.position.file);
+      }
+    } else {
+      pieceAbbreviation = pieceFENMapping.white[move.piece.type];
+    }
+
+    const capture = isCapture ? "x" : "";
+    const newFile = getFileLetterFromNumber(move.newPosition.file);
+    const newRank = move.newPosition.rank + 1;
+
+    string += pieceAbbreviation + capture + newFile + newRank;
+  }
+
+  const enemyColour = getEnemyColour(move.piece.colour);
+  if (isKingInCheck(enemyColour, newPieceData)) {
+    if (hasNoLegalMoves(newPieceData[enemyColour])) {
+      string += "#";
+    } else {
+      string += "+";
+    }
+  }
+
+  return string;
+};
+
+export const getFENPosFromFullString = (fullFENString: string): string =>
+  fullFENString.split(" ")[0];
+
+export const sortPiecesByValue = (
+  ascending: boolean,
+  a: Piece,
+  b: Piece
+): number => {
+  if (ascending) {
+    return pieceValues[a.type] - pieceValues[b.type];
+  }
+  return pieceValues[b.type] - pieceValues[a.type];
+};
+
+export const getExchangeValueForEnemy = (
+  piece: Piece,
+  gameData: GameData,
+  numRanks: number,
+  numFiles: number
+): number => {
+  // Remove the piece in question so that we can see the defenders attacks on this square.
+  const xRayDefenders = gameData.pieceData[piece.colour].filter(
+    (p) => p.id !== piece.id
+  );
+  const falseCastlingAvailability: CastlingAvailability = {
+    kingside: false,
+    queenside: false,
+  };
+  const newGameData: GameData = {
+    ...gameData,
+    castlingAvailabilities: {
+      white: { ...falseCastlingAvailability },
+      black: { ...falseCastlingAvailability },
+    },
+    pieceData: {
+      ...gameData.pieceData,
+      [piece.colour]: xRayDefenders,
+    },
+  };
+  const newPieceData = generateAttacksForPieceData(
+    newGameData,
+    numRanks,
+    numFiles,
+    false
+  );
+
+  const enemyColour = getEnemyColour(piece.colour);
+
+  const attackers = newPieceData[enemyColour]
+    .filter((enemy) =>
+      enemy.attacks.some((a) => isSamePosition(a, piece.position))
+    )
+    .sort((a, b) => sortPiecesByValue(true, a, b));
+  const defenders = newPieceData[piece.colour]
+    .filter((friendly) =>
+      friendly.attacks.some((a) => isSamePosition(a, piece.position))
+    )
+    .sort((a, b) => sortPiecesByValue(true, a, b));
+
+  let materialWon = attackers.length > 0 ? pieceValues[piece.type] : 0;
+
+  while (attackers.length > 0 && defenders.length > 0) {
+    if (defenders.length > 0) {
+      materialWon -= pieceValues[attackers[0].type];
+      attackers.shift();
+    }
+
+    if (attackers.length > 0) {
+      materialWon += pieceValues[defenders[0].type];
+      defenders.shift();
+    }
+  }
+
+  return materialWon;
+};
+
+export const isWinningExchange = (
+  piece: Piece,
+  gameData: GameData,
+  numRanks: number,
+  numFiles: number
+): boolean => getExchangeValueForEnemy(piece, gameData, numRanks, numFiles) > 0;
+
+export const enemyHasWinningExchange = (
+  colour: PieceColour,
+  gameData: GameData,
+  numRanks: number,
+  numFiles: number
+): boolean =>
+  gameData.pieceData[colour].some((p) =>
+    isWinningExchange(p, gameData, numRanks, numFiles)
+  );
+
+export const pieceCanBeCaptured = (
+  colour: PieceColour,
+  pieceData: PieceData
+): boolean => {
+  const enemyColour = getEnemyColour(colour);
+  const enemyMoves = getAllAvailableMoves(pieceData[enemyColour]);
+  return enemyMoves.some((m) => moveIsCapture(m, pieceData[colour]));
 };

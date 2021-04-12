@@ -1,6 +1,7 @@
-import pieceTypeArray, {
+import {
   pieceColourArray,
   pieceMoveTypeArray,
+  pieceTypeArray,
 } from "../globalConstants";
 
 export type PieceColour = typeof pieceColourArray[number];
@@ -59,6 +60,7 @@ export interface GameData {
    */
   fullmoveNumber: number;
   pieceData: PieceData;
+  FEN: string;
 }
 
 export type PieceMovement = {
@@ -75,4 +77,54 @@ export interface Move {
   newPosition: Position;
 }
 
-export type BotEngine = "random";
+export type BotEngine = "random" | "cherry";
+
+export type GameResult = {
+  [colour in PieceColour]: number;
+};
+
+export type EvaluationFactorScore = {
+  [colour in PieceColour]: number;
+};
+
+export type PieceValues = {
+  [type in PieceType]: number;
+};
+
+export interface MoveWithEval {
+  move: Move | null;
+  eval: number;
+}
+
+export type EvaluationFactor = "material" | "positional";
+
+export type EvaluationFactorBalances = {
+  [factor in EvaluationFactor]: number;
+};
+
+export type SquareValueMatrixType = "product" | "sum" | "fixed";
+
+export type PieceFENMapping = {
+  [colour in PieceColour]: { [type in PieceType]: string };
+};
+
+export type BotPlayers = { [colour in PieceColour]: boolean };
+
+export type TranspositionMap = { [fenPosition: string]: number };
+
+export type MiniMaxTerminationType =
+  | "none"
+  | "captures"
+  | "hanging"
+  | "winningExchanges";
+
+export interface EvalMetrics {
+  positionsAnalyzed: number;
+  transpositionsAnalyzed: number;
+  maxDepthSearched: number;
+  duration: number;
+}
+
+export type EvalMetricsIncrementors = {
+  [metric in keyof EvalMetrics]: (...args: any[]) => void;
+};

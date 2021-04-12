@@ -1,7 +1,7 @@
 import React from "react";
 import { useDrop } from "react-dnd";
 import { createUseStyles } from "react-jss";
-import pieceTypeArray from "../../globalConstants";
+import { pieceTypeArray } from "../../globalConstants";
 import theme from "../../theme";
 import { Piece as PieceType, PieceColour, Position } from "../../typings";
 import { isSamePosition } from "../../utils/game.utils";

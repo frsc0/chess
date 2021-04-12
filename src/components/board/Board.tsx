@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { createUseStyles } from "react-jss";
-import { boardSpaceUtilization } from "../../config";
 import { Piece, PieceColour, PieceData, Position } from "../../typings";
 import { getPieceOnSquare, isSamePosition } from "../../utils/game.utils";
 import Square from "./Square";
@@ -11,6 +10,8 @@ const useStyles = createUseStyles(() => ({
   root: {
     display: "flex",
     flexDirection: "column",
+    flex: 1,
+    height: "100%",
   },
   rank: {
     display: "flex",
@@ -29,18 +30,10 @@ interface BoardProps {
   setDroppableSquares: (newSquares: Position[]) => void;
 }
 
-const getBoardDimension = (viewportWidth: number, viewportHeight: number) => {
-  const spaceUtilizationPct = boardSpaceUtilization * 100;
-  if (viewportWidth >= viewportHeight) {
-    return `${spaceUtilizationPct}vh`;
-  }
-  return `${spaceUtilizationPct}vw`;
-};
-
 const generateSquares = (numRanks: number, numFiles: number): null[][] => {
-  const board = [];
+  const board: null[][] = [];
   for (let i = 0; i < numRanks; i += 1) {
-    const rank = [];
+    const rank: null[] = [];
     for (let j = 0; j < numFiles; j += 1) {
       rank.push(null);
     }
@@ -61,9 +54,6 @@ export default function Board(props: BoardProps): JSX.Element {
     setDroppableSquares,
   } = props;
   const classes = useStyles();
-  const [boardDimension, setBoardDimension] = useState<string>(
-    getBoardDimension(window.innerWidth, window.innerHeight)
-  );
   const [squares, setSquares] = useState<null[][]>(
     generateSquares(numRanks, numFiles)
   );
@@ -72,18 +62,9 @@ export default function Board(props: BoardProps): JSX.Element {
     setSquares(generateSquares(numRanks, numFiles));
   }, [numRanks, numFiles]);
 
-  const onResize = () => {
-    setBoardDimension(getBoardDimension(window.innerWidth, window.innerHeight));
-  };
-
-  window.addEventListener("resize", onResize);
-
   return (
     <DndProvider backend={HTML5Backend}>
-      <div
-        className={classes.root}
-        style={{ height: boardDimension, width: boardDimension }}
-      >
+      <div className={classes.root}>
         {squares.map((rank, i) => (
           <div
             className={classes.rank}

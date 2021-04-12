@@ -5,6 +5,11 @@
     }
   ],
   "settings": {
-    "cSpell.words": ["fullmove", "halfmove", "queenside"]
+    "cSpell.words": [
+      "Incrementors",
+      "fullmove",
+      "halfmove",
+      "queenside"
+    ]
   }
 }
