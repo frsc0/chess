@@ -1,4 +1,5 @@
 import {
+  gamePhaseArray,
   pieceColourArray,
   pieceMoveTypeArray,
   pieceTypeArray,
@@ -77,7 +78,7 @@ export interface Move {
   newPosition: Position;
 }
 
-export type BotEngine = "random" | "cherry";
+export type BotEngine = "random" | "cherrySimple" | "cherryComplex";
 
 export type GameResult = {
   [colour in PieceColour]: number;
@@ -96,7 +97,7 @@ export interface MoveWithEval {
   eval: number;
 }
 
-export type EvaluationFactor = "material" | "positional";
+export type EvaluationFactor = "material" | "control";
 
 export type EvaluationFactorBalances = {
   [factor in EvaluationFactor]: number;
@@ -128,3 +129,15 @@ export interface EvalMetrics {
 export type EvalMetricsIncrementors = {
   [metric in keyof EvalMetrics]: (...args: any[]) => void;
 };
+
+export type GamePhase = typeof gamePhaseArray[number];
+
+export type SquarePhaseTables = {
+  [phase in GamePhase]: number[][];
+};
+
+export type PieceSquarePhaseTables = {
+  [type in PieceType]: SquarePhaseTables;
+};
+
+export type EvalFunction = "simple" | "complex";

@@ -8,8 +8,10 @@ import {
   botMoveDelay,
   bots,
   evalFactorWeights,
+  evalFunction,
   numFiles,
   numRanks,
+  pieceSquareMultiplier,
   squareValueMatrixType,
   startingFEN,
 } from "./config";
@@ -20,14 +22,18 @@ import {
   EvalMetricsIncrementors,
   EvaluationFactorBalances,
   GameData,
+  GamePhase,
   GameResult,
   Piece,
+  PieceSquarePhaseTables,
   Position,
 } from "./typings";
 import botSelectMove, {
   calculateEvaluationFactorMaxes,
   evaluatePosition,
   generateSquareValueMatrix,
+  initializePieceSquarePhaseTables,
+  simpleEval,
 } from "./utils/bot.utils";
 import {
   getEnemyColour,
@@ -73,9 +79,17 @@ function App(): JSX.Element {
 
   const [gameResult, setGameResult] = useState<GameResult | null>(null);
   const [positionEval, setPositionEval] = useState<number>(0);
+  // TODO: Implement game phase.
+  const [gamePhase, setGamePhase] = useState<GamePhase>("opening");
   const [droppableSquares, setDroppableSquares] = useState<Position[]>([]);
   const [squareValueMatrix, setSquareValueMatrix] = useState<number[][]>(() =>
     generateSquareValueMatrix(numRanks, numFiles, squareValueMatrixType)
+  );
+  const [
+    pieceSquarePhaseTables,
+    setPieceSquarePhaseTables,
+  ] = useState<PieceSquarePhaseTables>(() =>
+    initializePieceSquarePhaseTables(numRanks, numFiles, pieceSquareMultiplier)
   );
   const [
     evaluationFactorMaxes,
@@ -186,19 +200,28 @@ function App(): JSX.Element {
     },
   };
 
+  const updateEval = (newEval: number) => {
+    setPositionEval(newEval);
+  };
+
   useEffect(() => {
     console.log("FEN", gameData.FEN);
     if (gameResult !== null) {
       return;
     }
-    setPositionEval(
-      evaluatePosition(
-        gameData,
-        squareValueMatrix,
-        evaluationFactorMaxes,
-        evalFactorWeights
-      )
-    );
+    if (bots.white === false && bots.black === false) {
+      // No bots are running so we'll use heuristic evaluations of the position.
+      setPositionEval(
+        evalFunction === "simple"
+          ? simpleEval(gameData, pieceSquarePhaseTables, gamePhase, numRanks)
+          : evaluatePosition(
+              gameData,
+              squareValueMatrix,
+              evaluationFactorMaxes,
+              evalFactorWeights
+            )
+      );
+    }
     setEvalMetricsAndRef({ ...initialEvalMetrics });
     const newGameResult = getGameResult(gameData);
     if (newGameResult !== null) {
@@ -217,7 +240,11 @@ function App(): JSX.Element {
         evaluationFactorMaxes,
         evalFactorWeights,
         evalMetrics.maxDepthSearched,
-        evalMetricsIncrementors
+        evalMetricsIncrementors,
+        evalFunction,
+        pieceSquarePhaseTables,
+        gamePhase,
+        updateEval
       );
       setTimeout(() => {
         movePiece(
@@ -256,6 +283,16 @@ function App(): JSX.Element {
   useEffect(() => {
     console.log("PGN", PGN);
   }, [PGN]);
+
+  useEffect(() => {
+    setPieceSquarePhaseTables(
+      initializePieceSquarePhaseTables(
+        numRanks,
+        numFiles,
+        pieceSquareMultiplier
+      )
+    );
+  }, [numRanks, numFiles, pieceSquareMultiplier]);
 
   const handleSetDroppableSquares = (newSquares: Position[]): void => {
     setDroppableSquares(newSquares);

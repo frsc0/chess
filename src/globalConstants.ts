@@ -56,3 +56,5 @@ export const initialEvalMetrics: EvalMetrics = {
   maxDepthSearched: 0,
   duration: 0,
 };
+
+export const gamePhaseArray = ["opening", "middleGame", "endGame"] as const;

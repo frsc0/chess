@@ -1,6 +1,7 @@
 import {
   BotEngine,
   BotPlayers,
+  EvalFunction,
   EvaluationFactorBalances,
   MiniMaxTerminationType,
   PieceColour,
@@ -17,13 +18,13 @@ export const startingFEN =
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 export const bots: BotPlayers = {
-  white: false,
+  white: true,
   black: true,
 };
 
 export const botEngine: { [colour in PieceColour]: BotEngine } = {
-  white: "cherry",
-  black: "cherry",
+  white: "cherryComplex",
+  black: "cherryComplex",
 };
 
 export const botMoveDelay = 0;
@@ -42,10 +43,14 @@ export const pieceValues: PieceValues = {
 export const miniMaxDepth = 5;
 
 export const evalFactorWeights: EvaluationFactorBalances = {
-  material: 9 / 10,
-  positional: 1 / 10,
+  material: 4 / 5,
+  control: 1 / 5,
 };
 
 export const squareValueMatrixType: SquareValueMatrixType = "sum";
 
 export const miniMaxTerminationType: MiniMaxTerminationType = "none";
+
+export const pieceSquareMultiplier = 5;
+
+export const evalFunction: EvalFunction = "complex";
