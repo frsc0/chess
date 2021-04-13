@@ -1969,3 +1969,15 @@ export const pieceCanBeCaptured = (
   const enemyMoves = getAllAvailableMoves(pieceData[enemyColour]);
   return enemyMoves.some((m) => moveIsCapture(m, pieceData[colour]));
 };
+
+export const getNumberOfAttackersOfPosition = (
+  position: Position,
+  enemyPieces: Piece[]
+): number =>
+  enemyPieces.reduce<number>(
+    (curCount, nextPiece) =>
+      nextPiece.attacks.some((attack) => isSamePosition(attack, position))
+        ? curCount + 1
+        : curCount,
+    0
+  );

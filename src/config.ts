@@ -40,7 +40,7 @@ export const pieceValues: PieceValues = {
   pawn: pawnValue,
 };
 
-export const miniMaxDepth = 5;
+export const miniMaxDepth = 4;
 
 export const evalFactorWeights: EvaluationFactorBalances = {
   material: 4 / 5,
@@ -49,7 +49,7 @@ export const evalFactorWeights: EvaluationFactorBalances = {
 
 export const squareValueMatrixType: SquareValueMatrixType = "sum";
 
-export const miniMaxTerminationType: MiniMaxTerminationType = "none";
+export const miniMaxTerminationType: MiniMaxTerminationType = "captures";
 
 export const pieceSquareMultiplier = 5;
 

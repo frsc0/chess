@@ -31,6 +31,7 @@ import {
   getCastlingSquare,
   getEnemyColour,
   getFENPosFromFullString,
+  getNumberOfAttackersOfPosition,
   getPieceOnSquareOfColour,
   initialPieceCount,
   isKingInCheck,
@@ -363,6 +364,19 @@ export const evaluatePosition = (
     evalFactorWeights
   );
 
+  if (
+    weightedEvalFactorBalance.control === Number.POSITIVE_INFINITY ||
+    weightedEvalFactorBalance.control === Number.POSITIVE_INFINITY
+  ) {
+    console.log("test");
+  }
+  if (
+    weightedEvalFactorBalance.control === Number.NEGATIVE_INFINITY ||
+    weightedEvalFactorBalance.control === Number.NEGATIVE_INFINITY
+  ) {
+    console.log("test");
+  }
+
   return getOverallEvalFromWeightedFactorBalances(weightedEvalFactorBalance);
 };
 
@@ -375,7 +389,7 @@ export const getCaptureValueDifference = (
     enemyPieces
   );
   if (enemyPieceCaptured === null) {
-    return Number.NEGATIVE_INFINITY;
+    return -pieceValues.queen;
   }
   return pieceValues[enemyPieceCaptured.type] - pieceValues[move.piece.type];
 };
@@ -393,11 +407,51 @@ export const moveSearchSorter = (
     return bCVD - aCVD;
   }
 
+  // Sort criterion 2: Don't move to square attacked by many enemy pieces.
+  const aAttackers = getNumberOfAttackersOfPosition(a.newPosition, enemyPieces);
+  const bAttackers = getNumberOfAttackersOfPosition(b.newPosition, enemyPieces);
+  if (aAttackers !== bAttackers) {
+    return bAttackers - aAttackers;
+  }
+
+  // Sort criterion 3: Move to high value square.
+  const aVal = squareValMatrix[a.newPosition.rank][a.newPosition.file];
+  const bVal = squareValMatrix[b.newPosition.rank][b.newPosition.file];
+  return bVal - aVal;
+};
+
+/**
+ * Alternate search function that can be plugged in.
+ * Considers all sort criteria before deciding on sort order.
+ */
+export const moveSearchSorterAggregate = (
+  a: Move,
+  b: Move,
+  enemyPieces: Piece[],
+  squareValMatrix: number[][]
+): number => {
+  let sortValue = 0;
+
+  // Sort criterion 1: Capture value difference.
+  const sort1Weight = 10;
+  const aCVD = getCaptureValueDifference(a, enemyPieces);
+  const bCVD = getCaptureValueDifference(b, enemyPieces);
+  sortValue += sort1Weight * (bCVD - aCVD);
+
   // Sort criterion 2: Move to high value square.
-  return (
-    squareValMatrix[b.newPosition.rank][b.newPosition.file] -
-    squareValMatrix[a.newPosition.rank][a.newPosition.file]
-  );
+  const sort2Weight = 5;
+  sortValue +=
+    sort2Weight *
+    (squareValMatrix[b.newPosition.rank][b.newPosition.file] -
+      squareValMatrix[a.newPosition.rank][a.newPosition.file]);
+
+  // Sort criterion 3: Don't move to square attacked by many enemy pieces.
+  const sort3Weight = 5;
+  const aAttackers = getNumberOfAttackersOfPosition(a.newPosition, enemyPieces);
+  const bAttackers = getNumberOfAttackersOfPosition(b.newPosition, enemyPieces);
+  sortValue += sort3Weight * (aAttackers - bAttackers);
+
+  return sortValue;
 };
 
 export const getSearchOptimizedMoves = (
@@ -441,6 +495,8 @@ export const miniMax = (
   gamePhase: GamePhase
 ): MoveWithEval => {
   const { activeColour } = curGameData;
+  const enemyColour = getEnemyColour(activeColour);
+
   if (hasNoLegalMoves(curGameData.pieceData[activeColour])) {
     return {
       move: null,
@@ -480,7 +536,14 @@ export const miniMax = (
                 ),
         };
       case "captures":
-        if (pieceCanBeCaptured(activeColour, curGameData.pieceData) === false) {
+        if (
+          pieceCanBeCaptured(enemyColour, curGameData.pieceData) === false ||
+          /**
+           * TODO: Implement iterative depth search so we don't need to do this.
+           * Don't go more than twice as deep as intended.
+           */
+          -depthRemaining >= miniMaxDepth
+        ) {
           return {
             move: null,
             eval:
@@ -552,7 +615,6 @@ export const miniMax = (
     }
   }
 
-  const enemyColour = getEnemyColour(activeColour);
   const searchOptimizedMoves = getSearchOptimizedMoves(
     curGameData.pieceData[activeColour],
     curGameData.pieceData[enemyColour],
@@ -568,59 +630,6 @@ export const miniMax = (
 
   if (activeColour === "white") {
     bestEval = Number.NEGATIVE_INFINITY;
-    searchOptimizedMoves.some((bMove) => {
-      const gameDataAfterMove = movePieceAndGetGameData(
-        curGameData,
-        bMove.piece,
-        bMove.newPosition.rank,
-        bMove.newPosition.file,
-        numRanks,
-        numFiles,
-        false
-      );
-
-      evalMetricsIncrementors.positionsAnalyzed();
-
-      const fenPos = getFENPosFromFullString(gameDataAfterMove.FEN);
-      let currentEval: MoveWithEval;
-      if (fenPos in transpositionMapRef) {
-        currentEval = { move: bMove, eval: transpositionMapRef[fenPos] };
-      } else {
-        currentEval = miniMax(
-          gameDataAfterMove,
-          depthRemaining - 1,
-          maxDepthSearched,
-          terminationType,
-          newAlpha,
-          newBeta,
-          numRanks,
-          numFiles,
-          squareValMatrix,
-          maxEvalFactors,
-          evalFactorWeights,
-          transpositionMapRef,
-          evalMetricsIncrementors,
-          evalFunction,
-          pieceSquarePhaseTables,
-          gamePhase
-        );
-        transpositionMapRef[fenPos] = currentEval.eval;
-        evalMetricsIncrementors.transpositionsAnalyzed();
-      }
-
-      if (currentEval.eval > bestEval) {
-        bestEval = currentEval.eval;
-        bestMoves = [bMove];
-      } else if (currentEval.eval === bestEval) {
-        bestMoves.push(bMove);
-      }
-      newAlpha = Math.max(newAlpha, bestEval);
-      return newAlpha >= newBeta;
-    });
-  }
-
-  if (activeColour === "black") {
-    bestEval = Number.POSITIVE_INFINITY;
     searchOptimizedMoves.some((wMove) => {
       const gameDataAfterMove = movePieceAndGetGameData(
         curGameData,
@@ -661,11 +670,64 @@ export const miniMax = (
         evalMetricsIncrementors.transpositionsAnalyzed();
       }
 
-      if (currentEval.eval < bestEval) {
+      if (currentEval.eval > bestEval) {
         bestEval = currentEval.eval;
         bestMoves = [wMove];
       } else if (currentEval.eval === bestEval) {
         bestMoves.push(wMove);
+      }
+      newAlpha = Math.max(newAlpha, bestEval);
+      return newAlpha >= newBeta;
+    });
+  }
+
+  if (activeColour === "black") {
+    bestEval = Number.POSITIVE_INFINITY;
+    searchOptimizedMoves.some((bMove) => {
+      const gameDataAfterMove = movePieceAndGetGameData(
+        curGameData,
+        bMove.piece,
+        bMove.newPosition.rank,
+        bMove.newPosition.file,
+        numRanks,
+        numFiles,
+        false
+      );
+
+      evalMetricsIncrementors.positionsAnalyzed();
+
+      const fenPos = getFENPosFromFullString(gameDataAfterMove.FEN);
+      let currentEval: MoveWithEval;
+      if (fenPos in transpositionMapRef) {
+        currentEval = { move: bMove, eval: transpositionMapRef[fenPos] };
+      } else {
+        currentEval = miniMax(
+          gameDataAfterMove,
+          depthRemaining - 1,
+          maxDepthSearched,
+          terminationType,
+          newAlpha,
+          newBeta,
+          numRanks,
+          numFiles,
+          squareValMatrix,
+          maxEvalFactors,
+          evalFactorWeights,
+          transpositionMapRef,
+          evalMetricsIncrementors,
+          evalFunction,
+          pieceSquarePhaseTables,
+          gamePhase
+        );
+        transpositionMapRef[fenPos] = currentEval.eval;
+        evalMetricsIncrementors.transpositionsAnalyzed();
+      }
+
+      if (currentEval.eval < bestEval) {
+        bestEval = currentEval.eval;
+        bestMoves = [bMove];
+      } else if (currentEval.eval === bestEval) {
+        bestMoves.push(bMove);
       }
       newBeta = Math.min(newBeta, bestEval);
       return newBeta <= newAlpha;
