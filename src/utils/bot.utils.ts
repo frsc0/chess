@@ -513,7 +513,7 @@ export const miniMax = (
   }
   const atTerminal = depthRemaining <= 0;
   if (miniMaxDepth - depthRemaining > maxDepthSearched) {
-    evalMetricsIncrementors.maxDepthSearched(maxDepthSearched + 1);
+    evalMetricsIncrementors.maxDepthSearched(miniMaxDepth - depthRemaining);
   }
   if (atTerminal) {
     switch (terminationType) {

@@ -222,7 +222,6 @@ function App(): JSX.Element {
             )
       );
     }
-    setEvalMetricsAndRef({ ...initialEvalMetrics });
     const newGameResult = getGameResult(gameData);
     if (newGameResult !== null) {
       setGameResult(newGameResult);
@@ -230,6 +229,7 @@ function App(): JSX.Element {
     }
     const { activeColour } = gameData;
     if (bots[activeColour]) {
+      setEvalMetricsAndRef({ ...initialEvalMetrics });
       const botMove = botSelectMove(
         botEngine[activeColour],
         activeColour,
