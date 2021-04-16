@@ -1,4 +1,9 @@
-import { miniMaxDepth, miniMaxTerminationType, pieceValues } from "../config";
+import {
+  maxSearchDepth,
+  maxSearchTimeMs,
+  miniMaxTerminationType,
+  pieceValues,
+} from "../config";
 import { gamePhaseArray, pieceTypeArray } from "../globalConstants";
 import {
   BotEngine,
@@ -40,6 +45,7 @@ import {
   movePieceAndGetGameData,
   pieceCanBeCaptured,
 } from "./game.utils";
+import { insertEval } from "./helper.utils";
 
 export const calculateMaterialMaxValue = (pieceData: PieceData): number => {
   let globalMax = 0;
@@ -364,19 +370,6 @@ export const evaluatePosition = (
     evalFactorWeights
   );
 
-  if (
-    weightedEvalFactorBalance.control === Number.POSITIVE_INFINITY ||
-    weightedEvalFactorBalance.control === Number.POSITIVE_INFINITY
-  ) {
-    console.log("test");
-  }
-  if (
-    weightedEvalFactorBalance.control === Number.NEGATIVE_INFINITY ||
-    weightedEvalFactorBalance.control === Number.NEGATIVE_INFINITY
-  ) {
-    console.log("test");
-  }
-
   return getOverallEvalFromWeightedFactorBalances(weightedEvalFactorBalance);
 };
 
@@ -478,8 +471,8 @@ export const selectRandomMove = (moves: Move[]): Move =>
 
 export const miniMax = (
   curGameData: GameData,
+  preOrderedMoves: Move[] | null,
   depthRemaining: number,
-  maxDepthSearched: number,
   terminationType: MiniMaxTerminationType,
   alpha: number,
   beta: number,
@@ -493,58 +486,37 @@ export const miniMax = (
   evalFunction: EvalFunction,
   pieceSquarePhaseTables: PieceSquarePhaseTables,
   gamePhase: GamePhase
-): MoveWithEval => {
+): MoveWithEval[] => {
   const { activeColour } = curGameData;
   const enemyColour = getEnemyColour(activeColour);
 
   if (hasNoLegalMoves(curGameData.pieceData[activeColour])) {
-    return {
-      move: null,
-      eval:
-        evalFunction === "simple"
-          ? simpleEval(curGameData, pieceSquarePhaseTables, gamePhase, numRanks)
-          : evaluatePosition(
-              curGameData,
-              squareValMatrix,
-              maxEvalFactors,
-              evalFactorWeights
-            ),
-    };
+    return [
+      {
+        move: null,
+        eval:
+          evalFunction === "simple"
+            ? simpleEval(
+                curGameData,
+                pieceSquarePhaseTables,
+                gamePhase,
+                numRanks
+              )
+            : evaluatePosition(
+                curGameData,
+                squareValMatrix,
+                maxEvalFactors,
+                evalFactorWeights
+              ),
+      },
+    ];
   }
   const atTerminal = depthRemaining <= 0;
-  if (miniMaxDepth - depthRemaining > maxDepthSearched) {
-    evalMetricsIncrementors.maxDepthSearched(miniMaxDepth - depthRemaining);
-  }
   if (atTerminal) {
     switch (terminationType) {
       case "none":
-        return {
-          move: null,
-          eval:
-            evalFunction === "simple"
-              ? simpleEval(
-                  curGameData,
-                  pieceSquarePhaseTables,
-                  gamePhase,
-                  numRanks
-                )
-              : evaluatePosition(
-                  curGameData,
-                  squareValMatrix,
-                  maxEvalFactors,
-                  evalFactorWeights
-                ),
-        };
-      case "captures":
-        if (
-          pieceCanBeCaptured(enemyColour, curGameData.pieceData) === false ||
-          /**
-           * TODO: Implement iterative depth search so we don't need to do this.
-           * Don't go more than twice as deep as intended.
-           */
-          -depthRemaining >= miniMaxDepth
-        ) {
-          return {
+        return [
+          {
             move: null,
             eval:
               evalFunction === "simple"
@@ -560,7 +532,32 @@ export const miniMax = (
                     maxEvalFactors,
                     evalFactorWeights
                   ),
-          };
+          },
+        ];
+      case "captures":
+        if (
+          pieceCanBeCaptured(enemyColour, curGameData.pieceData) === false ||
+          -depthRemaining > maxSearchDepth
+        ) {
+          return [
+            {
+              move: null,
+              eval:
+                evalFunction === "simple"
+                  ? simpleEval(
+                      curGameData,
+                      pieceSquarePhaseTables,
+                      gamePhase,
+                      numRanks
+                    )
+                  : evaluatePosition(
+                      curGameData,
+                      squareValMatrix,
+                      maxEvalFactors,
+                      evalFactorWeights
+                    ),
+            },
+          ];
         }
         break;
       case "winningExchanges":
@@ -572,7 +569,31 @@ export const miniMax = (
             numFiles
           ) === false
         ) {
-          return {
+          return [
+            {
+              move: null,
+              eval:
+                evalFunction === "simple"
+                  ? simpleEval(
+                      curGameData,
+                      pieceSquarePhaseTables,
+                      gamePhase,
+                      numRanks
+                    )
+                  : evaluatePosition(
+                      curGameData,
+                      squareValMatrix,
+                      maxEvalFactors,
+                      evalFactorWeights
+                    ),
+            },
+          ];
+        }
+        break;
+      case "hanging":
+        // TODO: Implement hanging termination type conditional.
+        return [
+          {
             move: null,
             eval:
               evalFunction === "simple"
@@ -588,42 +609,24 @@ export const miniMax = (
                     maxEvalFactors,
                     evalFactorWeights
                   ),
-          };
-        }
-        break;
-      case "hanging":
-        // TODO: Implement hanging termination type conditional.
-        return {
-          move: null,
-          eval:
-            evalFunction === "simple"
-              ? simpleEval(
-                  curGameData,
-                  pieceSquarePhaseTables,
-                  gamePhase,
-                  numRanks
-                )
-              : evaluatePosition(
-                  curGameData,
-                  squareValMatrix,
-                  maxEvalFactors,
-                  evalFactorWeights
-                ),
-        };
+          },
+        ];
       default:
         throw Error(`Invalid termination type: ${terminationType}.`);
     }
   }
 
-  const searchOptimizedMoves = getSearchOptimizedMoves(
-    curGameData.pieceData[activeColour],
-    curGameData.pieceData[enemyColour],
-    squareValMatrix,
-    atTerminal
-  );
+  const searchOptimizedMoves =
+    preOrderedMoves ||
+    getSearchOptimizedMoves(
+      curGameData.pieceData[activeColour],
+      curGameData.pieceData[enemyColour],
+      squareValMatrix,
+      atTerminal
+    );
 
-  let bestMoves: Move[] = [];
   let bestEval = 0;
+  let orderedMoves: MoveWithEval[] = [];
   let newAlpha = alpha;
   let newBeta = beta;
   const transpositionMapRef = transpositionMap;
@@ -648,10 +651,10 @@ export const miniMax = (
       if (fenPos in transpositionMapRef) {
         currentEval = { move: wMove, eval: transpositionMapRef[fenPos] };
       } else {
-        currentEval = miniMax(
+        [currentEval] = miniMax(
           gameDataAfterMove,
+          null,
           depthRemaining - 1,
-          maxDepthSearched,
           terminationType,
           newAlpha,
           newBeta,
@@ -666,15 +669,15 @@ export const miniMax = (
           pieceSquarePhaseTables,
           gamePhase
         );
+        currentEval.move = wMove;
         transpositionMapRef[fenPos] = currentEval.eval;
         evalMetricsIncrementors.transpositionsAnalyzed();
       }
 
+      orderedMoves = insertEval(orderedMoves, currentEval, activeColour);
+
       if (currentEval.eval > bestEval) {
         bestEval = currentEval.eval;
-        bestMoves = [wMove];
-      } else if (currentEval.eval === bestEval) {
-        bestMoves.push(wMove);
       }
       newAlpha = Math.max(newAlpha, bestEval);
       return newAlpha >= newBeta;
@@ -701,10 +704,10 @@ export const miniMax = (
       if (fenPos in transpositionMapRef) {
         currentEval = { move: bMove, eval: transpositionMapRef[fenPos] };
       } else {
-        currentEval = miniMax(
+        [currentEval] = miniMax(
           gameDataAfterMove,
+          null,
           depthRemaining - 1,
-          maxDepthSearched,
           terminationType,
           newAlpha,
           newBeta,
@@ -719,22 +722,22 @@ export const miniMax = (
           pieceSquarePhaseTables,
           gamePhase
         );
+        currentEval.move = bMove;
         transpositionMapRef[fenPos] = currentEval.eval;
         evalMetricsIncrementors.transpositionsAnalyzed();
       }
 
+      orderedMoves = insertEval(orderedMoves, currentEval, activeColour);
+
       if (currentEval.eval < bestEval) {
         bestEval = currentEval.eval;
-        bestMoves = [bMove];
-      } else if (currentEval.eval === bestEval) {
-        bestMoves.push(bMove);
       }
       newBeta = Math.min(newBeta, bestEval);
       return newBeta <= newAlpha;
     });
   }
 
-  return { move: selectRandomMove(bestMoves), eval: bestEval };
+  return orderedMoves;
 };
 
 export const cherryBotSelectMove = (
@@ -746,7 +749,6 @@ export const cherryBotSelectMove = (
   squareValMatrix: number[][],
   maxEvalFactors: EvaluationFactorBalances,
   evalFactorWeights: EvaluationFactorBalances,
-  maxDepthSearched: number,
   evalMetricsIncrementors: EvalMetricsIncrementors,
   evalFunction: EvalFunction,
   pieceSquarePhaseTables: PieceSquarePhaseTables,
@@ -756,26 +758,58 @@ export const cherryBotSelectMove = (
   if (availableMoves.length === 0) {
     throw Error(`No available moves for colour ${colour}.`);
   }
-  const initTranspositionMap: TranspositionMap = {};
-  const bestMoveAndEval = miniMax(
-    gameData,
-    miniMaxDepth - 1,
-    maxDepthSearched,
-    miniMaxTerminationType,
-    Number.NEGATIVE_INFINITY,
-    Number.POSITIVE_INFINITY,
-    numRanks,
-    numFiles,
+
+  let transpositionMap: TranspositionMap = {};
+  let timeOut = false;
+  let depthToSearch = 1;
+  let bestMoveAndEval: MoveWithEval | undefined;
+
+  const enemyColour = getEnemyColour(colour);
+  let moveOrder = getSearchOptimizedMoves(
+    gameData.pieceData[colour],
+    gameData.pieceData[enemyColour],
     squareValMatrix,
-    maxEvalFactors,
-    evalFactorWeights,
-    initTranspositionMap,
-    evalMetricsIncrementors,
-    evalFunction,
-    pieceSquarePhaseTables,
-    gamePhase
+    false
   );
-  if (bestMoveAndEval.move === null) {
+
+  const startTime = Date.now();
+
+  while (timeOut === false && depthToSearch <= maxSearchDepth) {
+    evalMetricsIncrementors.maxDepthSearched(depthToSearch);
+    const newMoveOrder = miniMax(
+      gameData,
+      moveOrder,
+      depthToSearch,
+      miniMaxTerminationType,
+      Number.NEGATIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      numRanks,
+      numFiles,
+      squareValMatrix,
+      maxEvalFactors,
+      evalFactorWeights,
+      transpositionMap,
+      evalMetricsIncrementors,
+      evalFunction,
+      pieceSquarePhaseTables,
+      gamePhase
+    );
+
+    [bestMoveAndEval] = newMoveOrder;
+    moveOrder = newMoveOrder.map((mWE) => {
+      if (mWE.move === null) {
+        throw Error("Unexpected null move");
+      }
+      return mWE.move;
+    });
+    transpositionMap = {};
+
+    depthToSearch += 1;
+    const iterationEndTime = Date.now();
+    timeOut = iterationEndTime - startTime > maxSearchTimeMs;
+  }
+
+  if (bestMoveAndEval === undefined || bestMoveAndEval.move === null) {
     throw Error("Minimax did not return a move.");
   }
   updateEval(bestMoveAndEval.eval);
@@ -791,7 +825,6 @@ export const botSelectMove = (
   squareValMatrix: number[][],
   maxEvalFactors: EvaluationFactorBalances,
   evalFactorWeights: EvaluationFactorBalances,
-  maxDepthSearched: number,
   evalMetricsIncrementors: EvalMetricsIncrementors,
   evalFunction: EvalFunction,
   pieceSquarePhaseTables: PieceSquarePhaseTables,
@@ -824,7 +857,6 @@ export const botSelectMove = (
         squareValMatrix,
         maxEvalFactors,
         evalFactorWeights,
-        maxDepthSearched,
         evalMetricsIncrementors,
         "simple",
         pieceSquarePhaseTables,
@@ -841,7 +873,6 @@ export const botSelectMove = (
         squareValMatrix,
         maxEvalFactors,
         evalFactorWeights,
-        maxDepthSearched,
         evalMetricsIncrementors,
         "complex",
         pieceSquarePhaseTables,

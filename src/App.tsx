@@ -239,7 +239,6 @@ function App(): JSX.Element {
         squareValueMatrix,
         evaluationFactorMaxes,
         evalFactorWeights,
-        evalMetrics.maxDepthSearched,
         evalMetricsIncrementors,
         evalFunction,
         pieceSquarePhaseTables,

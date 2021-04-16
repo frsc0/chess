@@ -18,7 +18,7 @@ export const startingFEN =
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 export const bots: BotPlayers = {
-  white: false,
+  white: true,
   black: true,
 };
 
@@ -49,8 +49,11 @@ export const evalFactorWeights: EvaluationFactorBalances = {
 
 export const squareValueMatrixType: SquareValueMatrixType = "sum";
 
-export const miniMaxTerminationType: MiniMaxTerminationType = "captures";
+export const miniMaxTerminationType: MiniMaxTerminationType = "none";
 
 export const pieceSquareMultiplier = 5;
 
 export const evalFunction: EvalFunction = "complex";
+
+export const maxSearchDepth = 10;
+export const maxSearchTimeMs = 5000;
