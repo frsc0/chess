@@ -18,8 +18,8 @@ export const startingFEN =
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 export const bots: BotPlayers = {
-  white: true,
-  black: true,
+  white: false,
+  black: false,
 };
 
 export const botEngine: { [colour in PieceColour]: BotEngine } = {
@@ -47,7 +47,7 @@ export const evalFactorWeights: EvaluationFactorBalances = {
   control: 1 / 5,
 };
 
-export const squareValueMatrixType: SquareValueMatrixType = "sum";
+export const squareValueMatrixType: SquareValueMatrixType = "fixed";
 
 export const miniMaxTerminationType: MiniMaxTerminationType = "none";
 
@@ -56,4 +56,6 @@ export const pieceSquareMultiplier = 5;
 export const evalFunction: EvalFunction = "complex";
 
 export const maxSearchDepth = 10;
-export const maxSearchTimeMs = 5000;
+export const maxSearchTimeMs = 3000;
+
+export const moveTrailLength = 2;

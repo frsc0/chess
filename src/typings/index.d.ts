@@ -141,3 +141,5 @@ export type PieceSquarePhaseTables = {
 };
 
 export type EvalFunction = "simple" | "complex";
+
+export type Sound = "move" | "capture";

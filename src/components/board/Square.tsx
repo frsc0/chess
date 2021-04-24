@@ -1,10 +1,20 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useDrop } from "react-dnd";
 import { createUseStyles } from "react-jss";
-import { pieceTypeArray } from "../../globalConstants";
-import theme from "../../theme";
+import { moveTrailLength } from "../../config";
+import {
+  colourTemplateSplitChar,
+  maxMoveTrailOpacity,
+  minMoveTrailOpacity,
+  pieceTypeArray,
+} from "../../globalConstants";
+import { themeConstants } from "../../theme";
 import { Piece as PieceType, PieceColour, Position } from "../../typings";
-import { isSamePosition } from "../../utils/game.utils";
+import {
+  getMoveTrailColour,
+  getSquareColour,
+  isSamePosition,
+} from "../../utils/game.utils";
 import Piece from "../pieces/Piece";
 
 const droppableIconWidth = 0.33;
@@ -18,6 +28,12 @@ const useStyles = createUseStyles(() => ({
     position: "relative",
   },
   checkIndicator: {
+    position: "absolute",
+    height: "100%",
+    width: "100%",
+    backgroundColor: "rgba(219, 68, 55, 0.5)",
+  },
+  moveTrailIndicator: {
     position: "absolute",
     height: "100%",
     width: "100%",
@@ -42,6 +58,7 @@ interface SquareProps {
   activeColour: PieceColour;
   droppable: boolean;
   checkingSquare: boolean;
+  moveTrailIndex: number;
   movePiece: (piece: PieceType, newRank: number, newFile: number) => void;
   setDroppableSquares: (newSquares: Position[]) => void;
 }
@@ -54,10 +71,41 @@ export default function Square(props: SquareProps): JSX.Element {
     activeColour,
     droppable,
     checkingSquare,
+    moveTrailIndex,
     movePiece,
     setDroppableSquares,
   } = props;
   const classes = useStyles();
+  const [colour, setColour] = useState<string>(() =>
+    getSquareColour(rankIndex, fileIndex)
+  );
+  const [moveTrailColour, setMoveTrailColour] = useState<string | null>(() =>
+    getMoveTrailColour(
+      moveTrailIndex,
+      moveTrailLength,
+      themeConstants.moveTrail,
+      colourTemplateSplitChar,
+      maxMoveTrailOpacity,
+      minMoveTrailOpacity
+    )
+  );
+
+  useEffect(() => {
+    setColour(getSquareColour(rankIndex, fileIndex));
+  }, [rankIndex, fileIndex]);
+
+  useEffect(() => {
+    setMoveTrailColour(
+      getMoveTrailColour(
+        moveTrailIndex,
+        moveTrailLength,
+        themeConstants.moveTrail,
+        colourTemplateSplitChar,
+        maxMoveTrailOpacity,
+        minMoveTrailOpacity
+      )
+    );
+  }, [moveTrailIndex]);
 
   const [{ isOver }, drop] = useDrop(
     () => ({
@@ -74,15 +122,20 @@ export default function Square(props: SquareProps): JSX.Element {
     [rankIndex, fileIndex]
   );
 
-  const color =
-    (fileIndex - rankIndex) % 2 === 0
-      ? theme.palette.board.dark
-      : theme.palette.board.light;
-
   return (
-    <div className={classes.root} style={{ backgroundColor: color }} ref={drop}>
+    <div
+      className={classes.root}
+      style={{ backgroundColor: colour }}
+      ref={drop}
+    >
       {droppable && <div className={classes.droppableIcon} />}
       {checkingSquare && <div className={classes.checkIndicator} />}
+      {moveTrailColour && (
+        <div
+          className={classes.moveTrailIndicator}
+          style={{ backgroundColor: moveTrailColour }}
+        />
+      )}
       {piece && (
         <Piece
           piece={piece}

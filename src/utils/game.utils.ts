@@ -8,6 +8,7 @@ import {
   pieceColourArray,
   pieceFENMapping,
 } from "../globalConstants";
+import { themeConstants } from "../theme";
 import {
   BotPlayers,
   CastlingAvailabilities,
@@ -25,6 +26,7 @@ import {
   PieceMoveType,
   PieceType,
   Position,
+  Sound,
 } from "../typings";
 import { hasNoLegalMoves } from "./bot.utils";
 
@@ -1981,3 +1983,59 @@ export const getNumberOfAttackersOfPosition = (
         : curCount,
     0
   );
+
+export const getNewMoveTrail = (
+  curPosition: Position | null,
+  newPosition: Position,
+  curMoveTrail: Position[],
+  moveTrailLength: number
+): Position[] => {
+  if (curPosition === null) {
+    throw Error("curPosition cannot be null.");
+  }
+  if (curMoveTrail.length > moveTrailLength) {
+    throw Error("Move trail length exceeds maximum.");
+  }
+
+  const newMoveTrail = [...curMoveTrail];
+
+  while (newMoveTrail.length > Math.max(moveTrailLength - 2, 0)) {
+    newMoveTrail.pop();
+  }
+
+  newMoveTrail.unshift(curPosition);
+  newMoveTrail.unshift(newPosition);
+
+  return newMoveTrail;
+};
+
+export const getSquareColour = (rank: number, file: number): string =>
+  (rank - file) % 2 === 0
+    ? themeConstants.board.dark
+    : themeConstants.board.light;
+
+export const getMoveTrailColour = (
+  moveTrailIndex: number,
+  moveTrailLength: number,
+  colourTemplate: string,
+  colourTemplateSplitChar: string,
+  maxOpacity: number,
+  minOpacity: number
+): string | null => {
+  if (moveTrailIndex === -1) {
+    return null;
+  }
+  const colourTemplateSplit = colourTemplate.split(colourTemplateSplitChar);
+  const opacityIncrement = (maxOpacity - minOpacity) / moveTrailLength;
+  const opacity = maxOpacity - moveTrailIndex * opacityIncrement;
+  const result = colourTemplateSplit[0] + opacity + colourTemplateSplit[1];
+  return result;
+};
+
+export const getSoundForMove = (move: Move, prevGameData: GameData): Sound => {
+  const enemyColour = getEnemyColour(move.piece.colour);
+  if (moveIsCapture(move, prevGameData.pieceData[enemyColour])) {
+    return "capture";
+  }
+  return "move";
+};

@@ -58,3 +58,8 @@ export const initialEvalMetrics: EvalMetrics = {
 };
 
 export const gamePhaseArray = ["opening", "middleGame", "endGame"] as const;
+
+export const maxMoveTrailOpacity = 0.5;
+export const minMoveTrailOpacity = 0;
+
+export const colourTemplateSplitChar = "?";

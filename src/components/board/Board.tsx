@@ -26,6 +26,7 @@ interface BoardProps {
   activeColour: PieceColour;
   droppableSquares: Position[];
   squareInCheck: Position | null;
+  moveTrail: Position[];
   movePiece: (piece: Piece, newRank: number, newFile: number) => void;
   setDroppableSquares: (newSquares: Position[]) => void;
 }
@@ -50,6 +51,7 @@ export default function Board(props: BoardProps): JSX.Element {
     activeColour,
     droppableSquares,
     squareInCheck,
+    moveTrail,
     movePiece,
     setDroppableSquares,
   } = props;
@@ -81,6 +83,9 @@ export default function Board(props: BoardProps): JSX.Element {
                 position.file,
                 pieceData
               );
+              const moveTrailIndex = moveTrail.findIndex((p) =>
+                isSamePosition(p, position)
+              );
               return (
                 <Square
                   rankIndex={rankIndex}
@@ -91,6 +96,7 @@ export default function Board(props: BoardProps): JSX.Element {
                     isSamePosition(sq, position)
                   )}
                   checkingSquare={isSamePosition(squareInCheck, position)}
+                  moveTrailIndex={moveTrailIndex}
                   movePiece={movePiece}
                   setDroppableSquares={setDroppableSquares}
                 />

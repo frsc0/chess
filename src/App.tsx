@@ -1,5 +1,7 @@
+import { ThemeProvider } from "@material-ui/core";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { createUseStyles, ThemeProvider } from "react-jss";
+import { createUseStyles } from "react-jss";
+import useSound from "use-sound";
 import Board from "./components/board/Board";
 import HUD from "./components/hud/HUD";
 import {
@@ -9,6 +11,7 @@ import {
   bots,
   evalFactorWeights,
   evalFunction,
+  moveTrailLength,
   numFiles,
   numRanks,
   pieceSquareMultiplier,
@@ -16,6 +19,8 @@ import {
   startingFEN,
 } from "./config";
 import { initialEvalMetrics } from "./globalConstants";
+import captureSound from "./resources/sound/capture.mp3";
+import moveSound from "./resources/sound/move.mp3";
 import theme from "./theme";
 import {
   EvalMetrics,
@@ -24,6 +29,7 @@ import {
   GameData,
   GamePhase,
   GameResult,
+  Move,
   Piece,
   PieceSquarePhaseTables,
   Position,
@@ -38,8 +44,10 @@ import botSelectMove, {
 import {
   getEnemyColour,
   getGameResult,
+  getNewMoveTrail,
   getPGNForMove,
   getPGNResult,
+  getSoundForMove,
   getSquareInCheck,
   initializeGameData,
   initializePGN,
@@ -105,6 +113,8 @@ function App(): JSX.Element {
   const [PGN, setPGN] = useState<string>(() =>
     initializePGN(1, bots, gameResult)
   );
+  const [moveTrail, setMoveTrail] = useState<Position[]>([]);
+  const moveTrailRef = useRef(moveTrail);
 
   const [evalMetrics, setEvalMetrics] = useState<EvalMetrics>({
     ...initialEvalMetrics,
@@ -133,6 +143,17 @@ function App(): JSX.Element {
     [resizeObserver.current]
   );
 
+  const [playMove] = useSound(moveSound);
+  const [playCapture] = useSound(captureSound);
+  const playMoveRef = useRef(playMove);
+  const playCaptureRef = useRef(playCapture);
+  useEffect(() => {
+    playMoveRef.current = playMove;
+  }, [playMove]);
+  useEffect(() => {
+    playCaptureRef.current = playCapture;
+  }, [playCapture]);
+
   const setGameDataAndRef = (newGameData: GameData) => {
     gameDataRef.current = newGameData;
     setGameData(newGameData);
@@ -143,7 +164,38 @@ function App(): JSX.Element {
     setEvalMetrics(newEvalMetrics);
   };
 
+  const setMoveTrailAndRef = (newMoveTrail: Position[]) => {
+    moveTrailRef.current = newMoveTrail;
+    setMoveTrail(newMoveTrail);
+  };
+
+  const playSoundForMove = (move: Move, prevGameData: GameData) => {
+    const sound = getSoundForMove(move, prevGameData);
+    switch (sound) {
+      case "move":
+        playMoveRef.current();
+        break;
+      case "capture":
+        playCaptureRef.current();
+        break;
+      default:
+        throw Error(`Invalid sound type: ${sound}.`);
+    }
+  };
+
   const movePiece = (piece: Piece, newRank: number, newFile: number) => {
+    setMoveTrailAndRef(
+      getNewMoveTrail(
+        piece.position,
+        { rank: newRank, file: newFile },
+        moveTrail,
+        moveTrailLength
+      )
+    );
+    const move = { piece, newPosition: { rank: newRank, file: newFile } };
+    playSoundForMove(move, gameDataRef.current);
+
+    const enemyColour = getEnemyColour(piece.colour);
     const newGameData = movePieceAndGetGameData(
       gameDataRef.current,
       piece,
@@ -153,8 +205,7 @@ function App(): JSX.Element {
       numFiles,
       true
     );
-    const move = { piece, newPosition: { rank: newRank, file: newFile } };
-    const enemyColour = getEnemyColour(piece.colour);
+
     setPGN(
       PGN +
         getPGNForMove(
@@ -167,6 +218,7 @@ function App(): JSX.Element {
           numFiles
         )
     );
+
     setGameDataAndRef(newGameData);
   };
 
@@ -313,6 +365,7 @@ function App(): JSX.Element {
             pieceData={gameData.pieceData}
             activeColour={gameData.activeColour}
             droppableSquares={droppableSquares}
+            moveTrail={moveTrail}
             squareInCheck={getSquareInCheck(gameData.pieceData)}
             setDroppableSquares={handleSetDroppableSquares}
             movePiece={movePiece}
